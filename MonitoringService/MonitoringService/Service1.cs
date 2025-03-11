@@ -10,9 +10,9 @@ namespace MonitoringService
 {
     public partial class Service1 : ServiceBase
     {
-        private Thread _usbWatcherThread;  // Thread for handling USB detection
-        private ManagementEventWatcher _usbWatcher;  // Watcher for USB insertions
-        private string _lastFileProcessed = "";
+        private Thread _usbWatcherThread;
+        private ManagementEventWatcher _usbWatcher;
+        private Process _clipboardProcess;
 
         public Service1()
         {
@@ -25,13 +25,9 @@ namespace MonitoringService
             try
             {
                 EventLog.WriteEntry("Service is starting...");
-
-                // Start USB detection
                 StartUsbDetection();
-
-                // Start the console app to monitor clipboard content
                 StartClipboardMonitoringConsoleApp();
-
+                FileWriter.WriteTestFile(); // Debugging permission test
                 EventLog.WriteEntry("Service has started successfully.");
             }
             catch (Exception ex)
@@ -46,9 +42,9 @@ namespace MonitoringService
             {
                 try
                 {
-                    WqlEventQuery query = new WqlEventQuery("SELECT * FROM Win32_VolumeChangeEvent WHERE EventType = 2"); // EventType 2 is USB inserted
+                    WqlEventQuery query = new WqlEventQuery("SELECT * FROM Win32_VolumeChangeEvent WHERE EventType = 2");
                     _usbWatcher = new ManagementEventWatcher(query);
-                    _usbWatcher.EventArrived += OnUsbInserted;  // Event handler when USB inserted
+                    _usbWatcher.EventArrived += OnUsbInserted;
                     _usbWatcher.Start();
                     EventLog.WriteEntry("USB detection started.");
                 }
@@ -64,10 +60,7 @@ namespace MonitoringService
 
         private void OnUsbInserted(object sender, EventArrivedEventArgs e)
         {
-            // Event log for USB inserted
             EventLog.WriteEntry("USB Device Inserted!");
-
-            // Play warning sound for 5 seconds
             PlayBeepSoundForFiveSeconds();
         }
 
@@ -77,8 +70,8 @@ namespace MonitoringService
             {
                 using (SoundPlayer player = new SoundPlayer(@"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\warning-sound.wav"))
                 {
-                    player.Play();  // Start playing asynchronously
-                    Thread.Sleep(5000); // Keep playing for 5 seconds
+                    player.Play();
+                    Thread.Sleep(5000);
                     player.Stop();
                 }
                 EventLog.WriteEntry("Beep sound played for 5 seconds.");
@@ -94,16 +87,23 @@ namespace MonitoringService
             try
             {
                 string consoleAppPath = @"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\ClipboardConsoleApp\ClipboardConsoleApp\bin\Debug\ClipboardConsoleApp.exe";
+                ProcessStartInfo startInfo = new ProcessStartInfo
+                {
+                    FileName = consoleAppPath,
+                    UseShellExecute = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
+                };
 
-                // Create and start the process
-                Process process = new Process();
-                process.StartInfo.FileName = consoleAppPath;
-                process.StartInfo.UseShellExecute = false; // Ensure it doesn't use the shell
-                process.StartInfo.CreateNoWindow = true; // Don't show a window
-                process.Start();
-                
+                _clipboardProcess = Process.Start(startInfo);
 
-                EventLog.WriteEntry("Clipboard monitoring console app started.");
+                if (_clipboardProcess != null && !_clipboardProcess.HasExited)
+                {
+                    EventLog.WriteEntry("Clipboard monitoring console app started successfully with PID: " + _clipboardProcess.Id);
+                }
+                else
+                {
+                    EventLog.WriteEntry("Clipboard monitoring console app failed to start.", EventLogEntryType.Warning);
+                }
             }
             catch (Exception ex)
             {
@@ -116,12 +116,15 @@ namespace MonitoringService
             try
             {
                 EventLog.WriteEntry("Service is stopping...");
+                _usbWatcher?.Stop();
+                _usbWatcher?.Dispose();
 
-                // Stop USB detection
-                if (_usbWatcher != null)
+                if (_clipboardProcess != null && !_clipboardProcess.HasExited)
                 {
-                    _usbWatcher.Stop();
-                    _usbWatcher.Dispose();
+                    _clipboardProcess.Kill();
+                    _clipboardProcess.WaitForExit();
+                    _clipboardProcess.Dispose();
+                    EventLog.WriteEntry("Clipboard monitoring console app stopped.");
                 }
 
                 EventLog.WriteEntry("Service has stopped.");
@@ -129,6 +132,24 @@ namespace MonitoringService
             catch (Exception ex)
             {
                 EventLog.WriteEntry("Error in OnStop: " + ex.Message, EventLogEntryType.Error);
+            }
+        }
+    }
+
+    public static class FileWriter
+    {
+        public static void WriteTestFile()
+        {
+            try
+            {
+                string filePath = @"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\test";
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                File.WriteAllText(filePath, "This is a test file written by the service.");
+                EventLog.WriteEntry("FileWriter", "Test file written successfully at: " + filePath);
+            }
+            catch (Exception ex)
+            {
+                EventLog.WriteEntry("FileWriter", "Error writing test file: " + ex.Message, EventLogEntryType.Error);
             }
         }
     }

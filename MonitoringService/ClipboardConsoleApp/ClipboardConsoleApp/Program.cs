@@ -1,77 +1,85 @@
 ﻿using System;
 using System.IO;
-using System.Threading;
-using System.Windows.Forms;  // for  clipboard access
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
 
 namespace ClipboardMonitorConsoleApp
 {
-    class Program
+    class ClipboardMonitorForm : Form
     {
-        static string _lastClipboardText = "";
+        private static string _lastClipboardText = "";
 
-        static void Main(string[] args)
+        // Windows API Import
+        [DllImport("user32.dll")]
+        private static extern bool AddClipboardFormatListener(IntPtr hwnd);
+
+        private const int WM_CLIPBOARDUPDATE = 0x031D;
+        private static readonly string DirectoryPath = @"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\ClipboardLogs";
+
+        public ClipboardMonitorForm()
         {
-            // Set the application to run in Single-Threaded Apartment (STA) mode for clipboard access
-            Thread thread = new Thread(MonitorClipboard);
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-
-            Console.WriteLine("Clipboard monitoring started. Press [Ctrl+C] to exit.");
-            Console.ReadLine();
+            AddClipboardFormatListener(this.Handle);
         }
 
-        private static void MonitorClipboard()
+        protected override void WndProc(ref Message m)
         {
-            while (true)
+            if (m.Msg == WM_CLIPBOARDUPDATE)
             {
-                try
-                {
-                    if (Clipboard.ContainsText()) // Check if clipboard has text
-                    {
-                        string currentClipboardText = Clipboard.GetText();
-                        if (currentClipboardText != _lastClipboardText) // If the clipboard content has changed
-                        {
-                            _lastClipboardText = currentClipboardText;
-
-                            // Log clipboard content
-                            Console.WriteLine("Clipboard copied: " + currentClipboardText);
-
-                            //write the content to a file or send it to the service
-                            SaveClipboardToFile(currentClipboardText);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine("Error monitoring clipboard: " + ex.Message);
-                }
-
-                Thread.Sleep(1000); // Check clipboard every second
+                HandleClipboardChange();
             }
+            base.WndProc(ref m);
         }
 
-        private static void SaveClipboardToFile(string content)
+        private void HandleClipboardChange()
         {
             try
             {
-                string filePath = $@"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\ClipboardLogs\Clipboard_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                if (Clipboard.ContainsText())
+                {
+                    string currentClipboardText = Clipboard.GetText();
+                    //verify if the clipboard was used
+                    if (currentClipboardText != _lastClipboardText)
+                    {
+                        _lastClipboardText = currentClipboardText;
+                        SaveClipboardToFile(currentClipboardText);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error handling clipboard: " + ex.Message);
+            }
+        }
 
-                // Log the file path to ensure it is unique
-                Console.WriteLine("Saving clipboard to file: " + filePath);
+        private void SaveClipboardToFile(string content)
+        {
+            try
+            {
+                // Creating teh directory if it doesn't exist
+                if (!Directory.Exists(DirectoryPath))
+                {
+                    Directory.CreateDirectory(DirectoryPath);
+                }
 
-                // Ensure the directory exists
-                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
-
-                // Write content to file
+                string filePath = Path.Combine(DirectoryPath, $"Clipboard_{DateTime.Now:yyyyMMdd_HHmmss}.txt");
                 File.WriteAllText(filePath, content);
-
-                Console.WriteLine("Clipboard content saved to: " + filePath);
+                //Console.WriteLine("Clipboard content saved to: " + filePath);
             }
             catch (Exception ex)
             {
                 Console.WriteLine("Error saving clipboard content: " + ex.Message);
             }
         }
+    }
 
+    static class Program
+    {
+        [STAThread]
+        static void Main()
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new ClipboardMonitorForm());
+        }
     }
 }

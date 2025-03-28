@@ -27,7 +27,6 @@ namespace MonitoringService
                 EventLog.WriteEntry("Service is starting...");
                 StartUsbDetection();
                 StartClipboardMonitoringConsoleApp();
-                FileWriter.WriteTestFile(); // Debugging permission test
                 EventLog.WriteEntry("Service has started successfully.");
             }
             catch (Exception ex)
@@ -61,6 +60,7 @@ namespace MonitoringService
         private void OnUsbInserted(object sender, EventArrivedEventArgs e)
         {
             EventLog.WriteEntry("USB Device Inserted!");
+            ApiLogger.Log("Info", "USB Device Inserted!");
             PlayBeepSoundForFiveSeconds();
         }
 
@@ -86,30 +86,40 @@ namespace MonitoringService
         {
             try
             {
-                string consoleAppPath = @"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\ClipboardConsoleApp\ClipboardConsoleApp\bin\Debug\ClipboardConsoleApp.exe";
+                string consoleAppPath = "C:\\Users\\Dina\\Documents\\CSIE\\licenta\\application\\RealTimeMonitoryingSolution\\MonitoringService\\ClipboardConsoleApp\\ClipboardConsoleApp\\bin\\Debug\\ClipboardConsoleApp.exe";
+                EventLog.WriteEntry("MonitoringService", $"Attempting to start clipboard monitoring from path: {consoleAppPath}", EventLogEntryType.Information);
+
+                if (!File.Exists(consoleAppPath))
+                {
+                    EventLog.WriteEntry("MonitoringService", $"Clipboard monitoring app not found at: {consoleAppPath}", EventLogEntryType.Error);
+                    return;
+                }
+
                 ProcessStartInfo startInfo = new ProcessStartInfo
                 {
                     FileName = consoleAppPath,
-                    UseShellExecute = true,
+                    UseShellExecute = true, // This allows running in the user's session
                     WindowStyle = ProcessWindowStyle.Hidden
                 };
 
-                _clipboardProcess = Process.Start(startInfo);
-
-                if (_clipboardProcess != null && !_clipboardProcess.HasExited)
+                Process clipboardProcess = Process.Start(startInfo);
+                if (clipboardProcess != null)
                 {
-                    EventLog.WriteEntry("Clipboard monitoring console app started successfully with PID: " + _clipboardProcess.Id);
+                    EventLog.WriteEntry("MonitoringService", $"Clipboard monitoring process started with ID: {clipboardProcess.Id}", EventLogEntryType.Information);
+                    _clipboardProcess = clipboardProcess;
                 }
                 else
                 {
-                    EventLog.WriteEntry("Clipboard monitoring console app failed to start.", EventLogEntryType.Warning);
+                    EventLog.WriteEntry("MonitoringService", "Failed to start clipboard monitoring process", EventLogEntryType.Error);
                 }
             }
             catch (Exception ex)
             {
-                EventLog.WriteEntry("Error starting clipboard monitoring console app: " + ex.Message, EventLogEntryType.Error);
+                EventLog.WriteEntry("MonitoringService", $"Error starting clipboard monitoring: {ex.Message}", EventLogEntryType.Error);
             }
         }
+
+        
 
         protected override void OnStop()
         {
@@ -132,24 +142,6 @@ namespace MonitoringService
             catch (Exception ex)
             {
                 EventLog.WriteEntry("Error in OnStop: " + ex.Message, EventLogEntryType.Error);
-            }
-        }
-    }
-
-    public static class FileWriter
-    {
-        public static void WriteTestFile()
-        {
-            try
-            {
-                string filePath = @"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\test";
-                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
-                File.WriteAllText(filePath, "This is a test file written by the service.");
-                EventLog.WriteEntry("FileWriter", "Test file written successfully at: " + filePath);
-            }
-            catch (Exception ex)
-            {
-                EventLog.WriteEntry("FileWriter", "Error writing test file: " + ex.Message, EventLogEntryType.Error);
             }
         }
     }

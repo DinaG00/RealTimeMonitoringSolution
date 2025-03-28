@@ -1,9 +1,11 @@
-﻿using System;
+using System;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using System.Diagnostics;
+using System.Security.Principal;
+using Microsoft.Win32.SafeHandles;
 
 namespace ClipboardMonitorConsoleApp
 {
@@ -15,35 +17,132 @@ namespace ClipboardMonitorConsoleApp
         [DllImport("kernel32.dll")]
         private static extern int GetCurrentProcessId();
 
-        [DllImport("user32.dll")]
-        private static extern int GetWindowThreadProcessId(IntPtr handle, out int processId);
+        [DllImport("wtsapi32.dll")]
+        private static extern bool WTSQueryUserToken(uint sessionId, out IntPtr Token);
 
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetShellWindow();
+        [DllImport("kernel32.dll")]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint WTSGetActiveConsoleSessionId();
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct SECURITY_ATTRIBUTES
+        {
+            public int Length;
+            public IntPtr lpSecurityDescriptor;
+            public bool bInheritHandle;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct STARTUPINFO
+        {
+            public int cb;
+            public string lpReserved;
+            public string lpDesktop;
+            public string lpTitle;
+            public uint dwX;
+            public uint dwY;
+            public uint dwXSize;
+            public uint dwYSize;
+            public uint dwXCountChars;
+            public uint dwYCountChars;
+            public uint dwFillAttribute;
+            public uint dwFlags;
+            public short wShowWindow;
+            public short cbReserved2;
+            public IntPtr lpReserved2;
+            public IntPtr hStdInput;
+            public IntPtr hStdOutput;
+            public IntPtr hStdError;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PROCESS_INFORMATION
+        {
+            public IntPtr hProcess;
+            public IntPtr hThread;
+            public uint dwProcessId;
+            public uint dwThreadId;
+        }
+
+        [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern bool CreateProcessAsUser(
+            IntPtr hToken,
+            string lpApplicationName,
+            string lpCommandLine,
+            ref SECURITY_ATTRIBUTES lpProcessAttributes,
+            ref SECURITY_ATTRIBUTES lpThreadAttributes,
+            bool bInheritHandles,
+            uint dwCreationFlags,
+            IntPtr lpEnvironment,
+            string lpCurrentDirectory,
+            ref STARTUPINFO lpStartupInfo,
+            out PROCESS_INFORMATION lpProcessInformation);
 
         private const int WM_CLIPBOARDUPDATE = 0x031D;
         private static string _lastClipboardText = "";
 
+        public static bool LaunchInUserSession(string appPath)
+        {
+            uint sessionId = WTSGetActiveConsoleSessionId();
+            IntPtr userToken = IntPtr.Zero;
+            
+            try
+            {
+                if (!WTSQueryUserToken(sessionId, out userToken))
+                {
+                    Console.WriteLine($"Failed to get user token. Error: {Marshal.GetLastWin32Error()}");
+                    return false;
+                }
+
+                var processAttr = new SECURITY_ATTRIBUTES();
+                var threadAttr = new SECURITY_ATTRIBUTES();
+                var startupInfo = new STARTUPINFO();
+                PROCESS_INFORMATION processInfo = new PROCESS_INFORMATION();
+
+                processAttr.Length = Marshal.SizeOf(processAttr);
+                threadAttr.Length = Marshal.SizeOf(threadAttr);
+                startupInfo.cb = Marshal.SizeOf(startupInfo);
+                startupInfo.lpDesktop = "winsta0\\default";
+
+                bool result = CreateProcessAsUser(
+                    userToken,
+                    appPath,
+                    null,
+                    ref processAttr,
+                    ref threadAttr,
+                    false,
+                    0,
+                    IntPtr.Zero,
+                    null,
+                    ref startupInfo,
+                    out processInfo);
+
+                if (!result)
+                {
+                    Console.WriteLine($"Failed to create process. Error: {Marshal.GetLastWin32Error()}");
+                    return false;
+                }
+
+                CloseHandle(processInfo.hProcess);
+                CloseHandle(processInfo.hThread);
+                return true;
+            }
+            finally
+            {
+                if (userToken != IntPtr.Zero)
+                {
+                    CloseHandle(userToken);
+                }
+            }
+        }
+
         public ClipboardMonitorForm()
         {
             Console.WriteLine($"Starting clipboard monitor in process {GetCurrentProcessId()}");
-            Console.WriteLine($"Running as user: {System.Security.Principal.WindowsIdentity.GetCurrent().Name}");
+            Console.WriteLine($"Running as user: {WindowsIdentity.GetCurrent().Name}");
             
-            // Check if we're running in an interactive session
-            IntPtr shellWindow = GetShellWindow();
-            int shellProcessId;
-            GetWindowThreadProcessId(shellWindow, out shellProcessId);
-            
-            bool isInteractiveSession = shellProcessId != 0;
-            Console.WriteLine($"Is interactive session: {isInteractiveSession}");
-            
-            if (!isInteractiveSession)
-            {
-                Console.WriteLine("Not running in an interactive session. Clipboard monitoring may not work.");
-                Console.WriteLine("Please run the application directly rather than as a service.");
-                return;
-            }
-
             bool success = AddClipboardFormatListener(this.Handle);
             if (!success)
             {
@@ -54,7 +153,6 @@ namespace ClipboardMonitorConsoleApp
                 Console.WriteLine("Successfully registered clipboard listener");
             }
             
-            // Try to get initial clipboard content
             try
             {
                 if (Clipboard.ContainsText())
@@ -137,8 +235,17 @@ namespace ClipboardMonitorConsoleApp
     static class Program
     {
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "--launch-user")
+            {
+                string appPath = Process.GetCurrentProcess().MainModule.FileName;
+                if (ClipboardMonitorForm.LaunchInUserSession(appPath))
+                {
+                    return;
+                }
+            }
+
             Console.WriteLine("Clipboard monitoring application starting...");
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -155,4 +262,4 @@ namespace ClipboardMonitorConsoleApp
             }
         }
     }
-}
+} 

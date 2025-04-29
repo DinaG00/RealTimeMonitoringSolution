@@ -1,65 +1,64 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
-import { Button, Container, Box, Typography, AppBar, Toolbar } from '@mui/material';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { AppBar, Toolbar, Typography, Button, Container } from '@mui/material';
 import UsbLogs from './components/UsbLogs';
 import ClipboardLogs from './components/ClipboardLogs';
-
-function HomePage() {
-    const navigate = useNavigate();
-
-    return (
-        <Box sx={{ textAlign: 'center', mt: 8 }}>
-            <Typography variant="h3" gutterBottom>
-                System Monitoring Dashboard
-            </Typography>
-            <Box sx={{ mt: 4, display: 'flex', gap: 4, justifyContent: 'center' }}>
-                <Button
-                    variant="contained"
-                    color="primary"
-                    size="large"
-                    onClick={() => navigate('/usb')}
-                    sx={{ minWidth: 200, height: 60 }}
-                >
-                    USB Logs
-                </Button>
-                <Button
-                    variant="contained"
-                    color="secondary"
-                    size="large"
-                    onClick={() => navigate('/clipboard')}
-                    sx={{ minWidth: 200, height: 60 }}
-                >
-                    Clipboard Logs
-                </Button>
-            </Box>
-        </Box>
-    );
-}
+import ProcessLogs from './components/ProcessLogs';
 
 function App() {
     return (
         <Router>
             <AppBar position="static">
                 <Toolbar>
-                    <Typography variant="h6" component={Link} to="/" style={{ textDecoration: 'none', color: 'white', flexGrow: 1 }}>
-                        Monitoring System
+                    <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+                        Monitoring Dashboard
                     </Typography>
+                    <Button color="inherit" component={Link} to="/">
+                        Home
+                    </Button>
                     <Button color="inherit" component={Link} to="/usb">
                         USB Logs
                     </Button>
                     <Button color="inherit" component={Link} to="/clipboard">
                         Clipboard Logs
                     </Button>
+                    <Button color="inherit" component={Link} to="/process">
+                        Process Logs
+                    </Button>
                 </Toolbar>
             </AppBar>
+
             <Container>
                 <Routes>
-                    <Route path="/" element={<HomePage />} />
+                    <Route path="/" element={<Home />} />
                     <Route path="/usb" element={<UsbLogs />} />
                     <Route path="/clipboard" element={<ClipboardLogs />} />
+                    <Route path="/process" element={<ProcessLogs />} />
                 </Routes>
             </Container>
         </Router>
+    );
+}
+
+function Home() {
+    return (
+        <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+            <Typography variant="h4" gutterBottom>
+                Welcome to the Monitoring Dashboard
+            </Typography>
+            <Typography variant="body1" paragraph>
+                This dashboard provides real-time monitoring of system activities including USB device connections,
+                clipboard operations, and process activities.
+            </Typography>
+            <Typography variant="h6" gutterBottom>
+                Available Monitoring Features:
+            </Typography>
+            <ul>
+                <li>USB Device Monitoring - Track device connections and disconnections</li>
+                <li>Clipboard Monitoring - Monitor clipboard content changes</li>
+                <li>Process Monitoring - Track application starts and stops</li>
+            </ul>
+        </Container>
     );
 }
 

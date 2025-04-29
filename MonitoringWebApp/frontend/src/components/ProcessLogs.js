@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { Table, Container, Typography, Paper } from '@mui/material';
 import { format } from 'date-fns';
 
-const ClipboardLogs = () => {
+const ProcessLogs = () => {
     const [logs, setLogs] = useState([]);
     const [error, setError] = useState(null);
 
     useEffect(() => {
         const fetchLogs = async () => {
             try {
-                const response = await fetch('http://localhost:5001/logs/clipboard');
+                const response = await fetch('http://localhost:5001/logs/process');
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -17,8 +17,8 @@ const ClipboardLogs = () => {
                 setLogs(Array.isArray(data) ? data : []);
                 setError(null);
             } catch (error) {
-                console.error('Error fetching clipboard logs:', error);
-                setError('Failed to fetch clipboard logs');
+                console.error('Error fetching process logs:', error);
+                setError('Failed to fetch process logs');
                 setLogs([]);
             }
         };
@@ -32,7 +32,7 @@ const ClipboardLogs = () => {
     return (
         <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
             <Typography variant="h4" gutterBottom>
-                Clipboard Logs
+                Process Logs
             </Typography>
             {error && (
                 <Typography color="error" gutterBottom>
@@ -43,7 +43,11 @@ const ClipboardLogs = () => {
                 <Table>
                     <thead>
                         <tr>
-                            <th>Content</th>
+                            <th>Process Name</th>
+                            <th>Window Title</th>
+                            <th>Action</th>
+                            <th>Start Time</th>
+                            <th>End Time</th>
                             <th>Timestamp</th>
                         </tr>
                     </thead>
@@ -51,14 +55,18 @@ const ClipboardLogs = () => {
                         {logs && logs.length > 0 ? (
                             logs.map((log) => (
                                 <tr key={log.id}>
-                                    <td>{log.content}</td>
+                                    <td>{log.process_name}</td>
+                                    <td>{log.window_title}</td>
+                                    <td>{log.action}</td>
+                                    <td>{log.start_time ? format(new Date(log.start_time), 'yyyy-MM-dd HH:mm:ss') : '-'}</td>
+                                    <td>{log.end_time ? format(new Date(log.end_time), 'yyyy-MM-dd HH:mm:ss') : '-'}</td>
                                     <td>{format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss')}</td>
                                 </tr>
                             ))
                         ) : (
                             <tr>
-                                <td colSpan="2" style={{ textAlign: 'center' }}>
-                                    No clipboard logs available
+                                <td colSpan="6" style={{ textAlign: 'center' }}>
+                                    No process logs available
                                 </td>
                             </tr>
                         )}
@@ -69,4 +77,4 @@ const ClipboardLogs = () => {
     );
 };
 
-export default ClipboardLogs; 
+export default ProcessLogs; 

@@ -209,6 +209,7 @@
       <DependentUpon>Service1.cs</DependentUpon>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TrackedProcess.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

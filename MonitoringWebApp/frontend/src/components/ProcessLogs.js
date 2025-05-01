@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Container, Typography, Paper } from '@mui/material';
+import { 
+    Table, 
+    Container, 
+    Typography, 
+    Paper, 
+    TableHead, 
+    TableBody, 
+    TableRow, 
+    TableCell,
+    Box,
+    Card,
+    CardContent 
+} from '@mui/material';
 import { format } from 'date-fns';
 
 const ProcessLogs = () => {
@@ -9,7 +21,7 @@ const ProcessLogs = () => {
     useEffect(() => {
         const fetchLogs = async () => {
             try {
-                const response = await fetch('http://localhost:5001/logs/process');
+                const response = await fetch('http://localhost:5001/logs/processes');
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -24,56 +36,173 @@ const ProcessLogs = () => {
         };
 
         fetchLogs();
-        const interval = setInterval(fetchLogs, 5000); // Refresh every 5 seconds
+        const interval = setInterval(fetchLogs, 5000);
 
         return () => clearInterval(interval);
     }, []);
 
+    const formatTime = (timestamp) => {
+        if (!timestamp) return '-';
+        const date = new Date(timestamp);
+        return format(date, 'yyyy-MM-dd HH:mm:ss');
+    };
+
     return (
-        <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-            <Typography variant="h4" gutterBottom>
-                Process Logs
-            </Typography>
-            {error && (
-                <Typography color="error" gutterBottom>
-                    {error}
-                </Typography>
-            )}
-            <Paper sx={{ width: '100%', overflow: 'hidden' }}>
+        <Card 
+            sx={{ 
+                width: '100%', 
+                overflow: 'hidden',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.08)',
+                borderRadius: 2,
+                bgcolor: 'background.paper'
+            }}
+        >
+            <CardContent sx={{ p: 0 }}>
+                {error && (
+                    <Box sx={{ p: 2, color: 'error.main' }}>
+                        <Typography variant="body2">
+                            {error}
+                        </Typography>
+                    </Box>
+                )}
                 <Table>
-                    <thead>
-                        <tr>
-                            <th>Process Name</th>
-                            <th>Window Title</th>
-                            <th>Action</th>
-                            <th>Start Time</th>
-                            <th>End Time</th>
-                            <th>Timestamp</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                    <TableHead>
+                        <TableRow>
+                            <TableCell 
+                                sx={{ 
+                                    fontWeight: 600,
+                                    color: 'text.primary',
+                                    fontSize: '0.875rem',
+                                    backgroundColor: 'grey.50',
+                                    borderBottom: '2px solid',
+                                    borderBottomColor: 'primary.main'
+                                }}
+                            >
+                                PC ID
+                            </TableCell>
+                            <TableCell 
+                                sx={{ 
+                                    fontWeight: 600,
+                                    color: 'text.primary',
+                                    fontSize: '0.875rem',
+                                    backgroundColor: 'grey.50',
+                                    borderBottom: '2px solid',
+                                    borderBottomColor: 'primary.main'
+                                }}
+                            >
+                                Process Name
+                            </TableCell>
+                            <TableCell 
+                                sx={{ 
+                                    fontWeight: 600,
+                                    color: 'text.primary',
+                                    fontSize: '0.875rem',
+                                    backgroundColor: 'grey.50',
+                                    borderBottom: '2px solid',
+                                    borderBottomColor: 'primary.main'
+                                }}
+                            >
+                                Action
+                            </TableCell>
+                            <TableCell 
+                                sx={{ 
+                                    fontWeight: 600,
+                                    color: 'text.primary',
+                                    fontSize: '0.875rem',
+                                    backgroundColor: 'grey.50',
+                                    borderBottom: '2px solid',
+                                    borderBottomColor: 'primary.main'
+                                }}
+                            >
+                                Start Time
+                            </TableCell>
+                            <TableCell 
+                                sx={{ 
+                                    fontWeight: 600,
+                                    color: 'text.primary',
+                                    fontSize: '0.875rem',
+                                    backgroundColor: 'grey.50',
+                                    borderBottom: '2px solid',
+                                    borderBottomColor: 'primary.main'
+                                }}
+                            >
+                                End Time
+                            </TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
                         {logs && logs.length > 0 ? (
                             logs.map((log) => (
-                                <tr key={log.id}>
-                                    <td>{log.process_name}</td>
-                                    <td>{log.window_title}</td>
-                                    <td>{log.action}</td>
-                                    <td>{log.start_time ? format(new Date(log.start_time), 'yyyy-MM-dd HH:mm:ss') : '-'}</td>
-                                    <td>{log.end_time ? format(new Date(log.end_time), 'yyyy-MM-dd HH:mm:ss') : '-'}</td>
-                                    <td>{format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss')}</td>
-                                </tr>
+                                <TableRow 
+                                    key={log.id} 
+                                    hover
+                                    sx={{
+                                        '&:hover': {
+                                            backgroundColor: 'action.hover'
+                                        }
+                                    }}
+                                >
+                                    <TableCell 
+                                        sx={{ 
+                                            fontSize: '0.875rem',
+                                            color: 'text.primary'
+                                        }}
+                                    >
+                                        {log.pc}
+                                    </TableCell>
+                                    <TableCell 
+                                        sx={{ 
+                                            fontSize: '0.875rem',
+                                            color: 'text.primary'
+                                        }}
+                                    >
+                                        {log.process_name}
+                                    </TableCell>
+                                    <TableCell 
+                                        sx={{ 
+                                            fontSize: '0.875rem',
+                                            color: 'text.primary'
+                                        }}
+                                    >
+                                        {log.action}
+                                    </TableCell>
+                                    <TableCell 
+                                        sx={{ 
+                                            fontSize: '0.875rem',
+                                            color: 'text.primary'
+                                        }}
+                                    >
+                                        {formatTime(log.start_time)}
+                                    </TableCell>
+                                    <TableCell 
+                                        sx={{ 
+                                            fontSize: '0.875rem',
+                                            color: 'text.primary'
+                                        }}
+                                    >
+                                        {formatTime(log.end_time)}
+                                    </TableCell>
+                                </TableRow>
                             ))
                         ) : (
-                            <tr>
-                                <td colSpan="6" style={{ textAlign: 'center' }}>
+                            <TableRow>
+                                <TableCell 
+                                    colSpan={5} 
+                                    align="center"
+                                    sx={{ 
+                                        py: 4,
+                                        color: 'text.secondary',
+                                        fontSize: '0.875rem'
+                                    }}
+                                >
                                     No process logs available
-                                </td>
-                            </tr>
+                                </TableCell>
+                            </TableRow>
                         )}
-                    </tbody>
+                    </TableBody>
                 </Table>
-            </Paper>
-        </Container>
+            </CardContent>
+        </Card>
     );
 };
 

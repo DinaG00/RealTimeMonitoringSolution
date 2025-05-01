@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Container, Typography, Paper } from '@mui/material';
+import { 
+    Table, 
+    Typography, 
+    TableHead, 
+    TableBody, 
+    TableRow, 
+    TableCell,
+    Box,
+    Card,
+    CardContent 
+} from '@mui/material';
 import { format } from 'date-fns';
 
 const UsbLogs = () => {
@@ -24,50 +34,146 @@ const UsbLogs = () => {
         };
 
         fetchLogs();
-        const interval = setInterval(fetchLogs, 5000); // Refresh every 5 seconds
+        const interval = setInterval(fetchLogs, 5000);
 
         return () => clearInterval(interval);
     }, []);
 
+    const formatTime = (timestamp) => {
+        if (!timestamp) return '-';
+        const date = new Date(timestamp);
+        return format(date, 'yyyy-MM-dd HH:mm:ss');
+    };
+
     return (
-        <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-            <Typography variant="h4" gutterBottom>
-                USB Logs
+        <>
+            <Typography
+                variant="h4"
+                component="h1"
+                sx={{
+                    mb: 4,
+                    fontWeight: 600,
+                    color: 'text.primary',
+                }}
+            >
+                USB Device Logs
             </Typography>
-            {error && (
-                <Typography color="error" gutterBottom>
-                    {error}
-                </Typography>
-            )}
-            <Paper sx={{ width: '100%', overflow: 'hidden' }}>
-                <Table>
-                    <thead>
-                        <tr>
-                            <th>PC ID</th>
-                            <th>Action</th>
-                            <th>Timestamp</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {logs && logs.length > 0 ? (
-                            logs.map((log) => (
-                                <tr key={log.id}>
-                                    <td>{log.pc_id}</td>
-                                    <td>{log.action}</td>
-                                    <td>{format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss')}</td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td colSpan="3" style={{ textAlign: 'center' }}>
-                                    No USB logs available
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </Table>
-            </Paper>
-        </Container>
+            <Card 
+                sx={{ 
+                    width: '100%', 
+                    overflow: 'hidden',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.08)',
+                    borderRadius: 2,
+                    bgcolor: 'background.paper'
+                }}
+            >
+                <CardContent sx={{ p: 0 }}>
+                    {error && (
+                        <Box sx={{ p: 2, color: 'error.main' }}>
+                            <Typography variant="body2">
+                                {error}
+                            </Typography>
+                        </Box>
+                    )}
+                    <Table>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell 
+                                    sx={{ 
+                                        fontWeight: 600,
+                                        color: 'text.primary',
+                                        fontSize: '0.875rem',
+                                        backgroundColor: 'grey.50',
+                                        borderBottom: '2px solid',
+                                        borderBottomColor: 'primary.main'
+                                    }}
+                                >
+                                    PC ID
+                                </TableCell>
+                                <TableCell 
+                                    sx={{ 
+                                        fontWeight: 600,
+                                        color: 'text.primary',
+                                        fontSize: '0.875rem',
+                                        backgroundColor: 'grey.50',
+                                        borderBottom: '2px solid',
+                                        borderBottomColor: 'primary.main'
+                                    }}
+                                >
+                                    Action
+                                </TableCell>
+                                <TableCell 
+                                    sx={{ 
+                                        fontWeight: 600,
+                                        color: 'text.primary',
+                                        fontSize: '0.875rem',
+                                        backgroundColor: 'grey.50',
+                                        borderBottom: '2px solid',
+                                        borderBottomColor: 'primary.main'
+                                    }}
+                                >
+                                    Time
+                                </TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {logs && logs.length > 0 ? (
+                                logs.map((log) => (
+                                    <TableRow 
+                                        key={log.id} 
+                                        hover
+                                        sx={{
+                                            '&:hover': {
+                                                backgroundColor: 'action.hover'
+                                            }
+                                        }}
+                                    >
+                                        <TableCell 
+                                            sx={{ 
+                                                fontSize: '0.875rem',
+                                                color: 'text.primary'
+                                            }}
+                                        >
+                                            {log.pc}
+                                        </TableCell>
+                                        <TableCell 
+                                            sx={{ 
+                                                fontSize: '0.875rem',
+                                                color: 'text.primary'
+                                            }}
+                                        >
+                                            {log.action}
+                                        </TableCell>
+                                        <TableCell 
+                                            sx={{ 
+                                                fontSize: '0.875rem',
+                                                color: 'text.primary'
+                                            }}
+                                        >
+                                            {formatTime(log.timestamp)}
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell 
+                                        colSpan={3} 
+                                        align="center"
+                                        sx={{ 
+                                            py: 4,
+                                            color: 'text.secondary',
+                                            fontSize: '0.875rem'
+                                        }}
+                                    >
+                                        No USB logs available
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </>
     );
 };
 

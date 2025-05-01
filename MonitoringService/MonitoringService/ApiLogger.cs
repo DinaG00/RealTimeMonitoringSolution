@@ -8,12 +8,11 @@ namespace MonitoringService
 {
     public static class ApiLogger
     {
-        // Use a static HttpClient with proper timeout and configuration
         private static readonly HttpClient client;
+        private static readonly string pcId = Environment.MachineName;
 
         static ApiLogger()
         {
-            // Configure HttpClient with a timeout of 30 seconds
             client = new HttpClient
             {
                 Timeout = TimeSpan.FromSeconds(30)
@@ -33,16 +32,14 @@ namespace MonitoringService
                 string url = GetUrlForType(type);
                 EventLog.WriteEntry("ApiLogger", $"Sending {type} log to {url}", EventLogEntryType.Information);
 
-                // Parse the data string into appropriate format
                 object logData;
                 switch (type)
                 {
                     case "USB":
-                        // For USB, we'll use the PC name as pc_id and set a fixed action
                         logData = new
                         {
-                            pc_id = Environment.MachineName,
-                            action = "USB device inserted!"
+                            pc = pcId,
+                            action = data
                         };
                         break;
 
@@ -52,17 +49,18 @@ namespace MonitoringService
                             EventLog.WriteEntry("ApiLogger", "Empty clipboard data received", EventLogEntryType.Warning);
                             return;
                         }
-                        logData = new { content = data };
+                        logData = new
+                        {
+                            pc = pcId,
+                            content = data
+                        };
                         break;
 
                     case "ProcessStart":
                     case "ProcessEnd":
                         EventLog.WriteEntry("ApiLogger", $"Processing {type} event with data: {data}", EventLogEntryType.Information);
 
-                        // Split the data based on "|"
                         var processParts = data.Split('|');
-
-                        // Filter out unwanted processes and ensure proper format
                         if (processParts.Length < 2 || string.IsNullOrWhiteSpace(processParts[0]))
                         {
                             EventLog.WriteEntry("ApiLogger", $"Invalid process data format. Expected at least 2 parts and a non-empty process name, got {processParts.Length}. Data: {data}", EventLogEntryType.Warning);
@@ -72,7 +70,6 @@ namespace MonitoringService
                         string processName = processParts[0].Trim();
                         string windowTitle = processParts.Length > 1 ? processParts[1].Trim() : "";
 
-                        // Only log if process name is valid
                         if (string.IsNullOrEmpty(processName) || processName.Equals("Idle", StringComparison.OrdinalIgnoreCase))
                         {
                             EventLog.WriteEntry("ApiLogger", $"Skipping unwanted process (process name: {processName})", EventLogEntryType.Information);
@@ -82,6 +79,7 @@ namespace MonitoringService
                         var now = DateTime.Now;
                         logData = new
                         {
+                            pc = pcId,
                             process_name = processName,
                             window_title = windowTitle,
                             action = type,
@@ -94,25 +92,20 @@ namespace MonitoringService
 
                     default:
                         EventLog.WriteEntry("ApiLogger", $"Unknown log type: {type}", EventLogEntryType.Warning);
-                        logData = new { data };
+                        logData = new { pc = pcId, data = data };
                         break;
                 }
 
-                // Serialize the log data to JSON
                 var json = System.Text.Json.JsonSerializer.Serialize(logData);
                 EventLog.WriteEntry("ApiLogger", $"Request content: {json}", EventLogEntryType.Information);
 
-                // Create and send the HTTP request
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 EventLog.WriteEntry("ApiLogger", "Sending HTTP request...", EventLogEntryType.Information);
 
                 var response = await client.PostAsync(url, content);
-
-                // Log the response content for debugging
                 var responseContent = await response.Content.ReadAsStringAsync();
                 EventLog.WriteEntry("ApiLogger", $"Received response: {responseContent}", EventLogEntryType.Information);
 
-                // Handle API response
                 if (!response.IsSuccessStatusCode)
                 {
                     EventLog.WriteEntry("ApiLogger", $"API returned {response.StatusCode}: {responseContent}", EventLogEntryType.Warning);
@@ -144,12 +137,11 @@ namespace MonitoringService
             else if (type == "Clipboard")
                 return "http://localhost:5001/logs/clipboard";
             else if (type == "ProcessStart" || type == "ProcessEnd")
-                return "http://localhost:5001/logs/process";
+                return "http://localhost:5001/logs/processes";
             else
                 return "http://localhost:5001/logs/general";
         }
 
-        // Dispose of the HttpClient instance properly when done
         public static void Dispose()
         {
             client.Dispose();

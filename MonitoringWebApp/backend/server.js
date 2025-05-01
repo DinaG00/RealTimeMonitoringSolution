@@ -85,23 +85,46 @@ app.post('/logs/usb', (req, res) => {
 
 // API to insert clipboard logs
 app.post('/logs/clipboard', (req, res) => {
-    const { content } = req.body;
+    const { content, pc } = req.body;
 
     console.log("Received clipboard log:", req.body);
 
-    if (!content) {
-        console.error("Missing content in request");
-        return res.status(400).json({ error: 'Missing content' });
+    if (!content || !pc) {
+        console.error("Missing content or PC ID in request");
+        return res.status(400).json({ error: 'Missing content or PC ID' });
     }
 
     // Use explicit timezone offset for Romania (UTC+2)
-    const sql = `INSERT INTO clipboard_logs (content, timestamp) VALUES (?, datetime('now', '+2 hours'))`;
-    db.run(sql, [content], function (err) {
+    const sql = `INSERT INTO clipboard_logs (pc, content, timestamp) VALUES (?, ?, datetime('now', '+2 hours'))`;
+    db.run(sql, [pc, content], function (err) {
         if (err) {
             console.error("Database Insert Error:", err.message);
             return res.status(500).json({ error: err.message });
         }
         console.log("Inserted clipboard log with ID:", this.lastID);
+        res.json({ id: this.lastID });
+    });
+});
+
+// API to insert process logs
+app.post('/logs/processes', (req, res) => {
+    const { process_name, pc, action, start_time, end_time } = req.body;
+
+    console.log("Received process log:", req.body);
+
+    if (!process_name || !pc) {
+        console.error("Missing process name or PC ID in request");
+        return res.status(400).json({ error: 'Missing process name or PC ID' });
+    }
+
+    const sql = `INSERT INTO processes_logs (pc, process_name, action, start_time, end_time) 
+                 VALUES (?, ?, ?, ?, ?)`;
+    db.run(sql, [pc, process_name, action, start_time, end_time], function (err) {
+        if (err) {
+            console.error("Database Insert Error:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        console.log("Inserted process log with ID:", this.lastID);
         res.json({ id: this.lastID });
     });
 });
@@ -135,6 +158,7 @@ app.get('/logs/clipboard', (req, res) => {
     db.all(`
         SELECT 
             id, 
+            pc,
             content, 
             strftime('%Y-%m-%d %H:%M:%S', datetime(timestamp)) as timestamp 
         FROM clipboard_logs 
@@ -145,6 +169,29 @@ app.get('/logs/clipboard', (req, res) => {
             return res.status(500).json({ error: err.message });
         }
         console.log('Found clipboard logs:', rows.length);
+        res.json(rows);
+    });
+});
+
+// API to fetch process logs
+app.get('/logs/processes', (req, res) => {
+    console.log('Fetching process logs...');
+    db.all(`
+        SELECT 
+            id, 
+            pc,
+            process_name,
+            action,
+            strftime('%Y-%m-%d %H:%M:%S', datetime(start_time)) as start_time,
+            strftime('%Y-%m-%d %H:%M:%S', datetime(end_time)) as end_time
+        FROM processes_logs 
+        ORDER BY start_time DESC
+    `, [], (err, rows) => {
+        if (err) {
+            console.error("Error fetching process logs:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        console.log('Found process logs:', rows.length);
         res.json(rows);
     });
 });

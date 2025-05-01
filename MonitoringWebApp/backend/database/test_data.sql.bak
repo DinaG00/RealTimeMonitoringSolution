@@ -8,4 +8,10 @@ INSERT INTO usb_logs (pc, data, timestamp) VALUES
 INSERT INTO clipboard_logs (content, timestamp) VALUES 
     ('Test clipboard content 1', datetime('now', '-2 hours')),
     ('Test clipboard content 2', datetime('now', '-1 hour')),
-    ('Test clipboard content 3', datetime('now', '-30 minutes')); 
+    ('Test clipboard content 3', datetime('now', '-30 minutes'));
+
+-- Insert test data for downloads logs
+INSERT INTO downloads_logs (pc, file_name, file_type, content, timestamp) VALUES
+    ('PC1', 'document.txt', '.txt', 'This is a sample text document content...', datetime('now', '-2 hours')),
+    ('PC2', 'image.jpg', '.jpg', NULL, datetime('now', '-1 hour')),
+    ('PC1', 'data.csv', '.csv', 'id,name,value\n1,test,100', datetime('now', '-30 minutes')); 

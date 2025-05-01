@@ -6,6 +6,7 @@ import theme from './theme';
 import ProcessLogs from './components/ProcessLogs';
 import UsbLogs from './components/UsbLogs';
 import ClipboardLogs from './components/ClipboardLogs';
+import DownloadLogs from './components/DownloadLogs';
 
 const Home = () => (
     <Box sx={{ mt: 4 }}>
@@ -13,20 +14,24 @@ const Home = () => (
             Welcome to the Monitoring Dashboard
         </Typography>
         <Typography variant="body1" paragraph>
-            This application provides a real-time tracking and monitoring of system activities to detect suspicious behavior and prevent cheating during exams.
+            This dashboard provides real-time monitoring of system activities including USB device connections,
+            clipboard operations, process activities, and file downloads.
         </Typography>
         <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
             Available Monitoring Features:
         </Typography>
         <Box component="ul" sx={{ pl: 3 }}>
             <Typography component="li" sx={{ mb: 1 }}>
-                USB Device Monitoring - Track external memory drive connections
+                USB Device Monitoring - Track device connections and disconnections
             </Typography>
             <Typography component="li" sx={{ mb: 1 }}>
                 Clipboard Monitoring - Monitor clipboard content changes
             </Typography>
             <Typography component="li" sx={{ mb: 1 }}>
                 Process Monitoring - Track application starts and stops
+            </Typography>
+            <Typography component="li" sx={{ mb: 1 }}>
+                Download Monitoring - Track file downloads and their content
             </Typography>
         </Box>
     </Box>
@@ -106,6 +111,19 @@ function App() {
                                 >
                                     Clipboard Logs
                                 </Button>
+                                <Button
+                                    component={Link}
+                                    to="/downloads"
+                                    sx={{
+                                        color: theme.palette.primary.main,
+                                        fontWeight: 500,
+                                        '&:hover': {
+                                            backgroundColor: 'rgba(0, 120, 212, 0.04)',
+                                        },
+                                    }}
+                                >
+                                    Download Logs
+                                </Button>
                             </Box>
                         </Toolbar>
                     </AppBar>
@@ -125,6 +143,7 @@ function App() {
                             <Route path="/process" element={<ProcessLogs />} />
                             <Route path="/usb" element={<UsbLogs />} />
                             <Route path="/clipboard" element={<ClipboardLogs />} />
+                            <Route path="/downloads" element={<DownloadLogs />} />
                         </Routes>
                     </Container>
 

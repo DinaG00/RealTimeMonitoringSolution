@@ -12,14 +12,14 @@ import {
 } from '@mui/material';
 import { format } from 'date-fns';
 
-const UsbLogs = () => {
+const DownloadLogs = () => {
     const [logs, setLogs] = useState([]);
     const [error, setError] = useState(null);
 
     useEffect(() => {
         const fetchLogs = async () => {
             try {
-                const response = await fetch('http://localhost:5001/logs/usb');
+                const response = await fetch('http://localhost:5001/logs/downloads');
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -27,8 +27,8 @@ const UsbLogs = () => {
                 setLogs(Array.isArray(data) ? data : []);
                 setError(null);
             } catch (error) {
-                console.error('Error fetching USB logs:', error);
-                setError('Failed to fetch USB logs');
+                console.error('Error fetching download logs:', error);
+                setError('Failed to fetch download logs');
                 setLogs([]);
             }
         };
@@ -56,7 +56,7 @@ const UsbLogs = () => {
                     color: 'text.primary',
                 }}
             >
-                USB Device Logs
+                Download Logs
             </Typography>
             <Card 
                 sx={{ 
@@ -100,7 +100,31 @@ const UsbLogs = () => {
                                         borderBottomColor: 'primary.main'
                                     }}
                                 >
-                                    Action
+                                    File Name
+                                </TableCell>
+                                <TableCell 
+                                    sx={{ 
+                                        fontWeight: 600,
+                                        color: 'text.primary',
+                                        fontSize: '0.875rem',
+                                        backgroundColor: 'grey.50',
+                                        borderBottom: '2px solid',
+                                        borderBottomColor: 'primary.main'
+                                    }}
+                                >
+                                    File Type
+                                </TableCell>
+                                <TableCell 
+                                    sx={{ 
+                                        fontWeight: 600,
+                                        color: 'text.primary',
+                                        fontSize: '0.875rem',
+                                        backgroundColor: 'grey.50',
+                                        borderBottom: '2px solid',
+                                        borderBottomColor: 'primary.main'
+                                    }}
+                                >
+                                    Content Preview
                                 </TableCell>
                                 <TableCell 
                                     sx={{ 
@@ -142,7 +166,27 @@ const UsbLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.data}
+                                            {log.file_name}
+                                        </TableCell>
+                                        <TableCell 
+                                            sx={{ 
+                                                fontSize: '0.875rem',
+                                                color: 'text.primary'
+                                            }}
+                                        >
+                                            {log.file_type}
+                                        </TableCell>
+                                        <TableCell 
+                                            sx={{ 
+                                                fontSize: '0.875rem',
+                                                color: 'text.primary',
+                                                maxWidth: '300px',
+                                                overflow: 'hidden',
+                                                textOverflow: 'ellipsis',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            {log.content || 'No preview available'}
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
@@ -157,7 +201,7 @@ const UsbLogs = () => {
                             ) : (
                                 <TableRow>
                                     <TableCell 
-                                        colSpan={3} 
+                                        colSpan={5} 
                                         align="center"
                                         sx={{ 
                                             py: 4,
@@ -165,7 +209,7 @@ const UsbLogs = () => {
                                             fontSize: '0.875rem'
                                         }}
                                     >
-                                        No USB logs available
+                                        No download logs available
                                     </TableCell>
                                 </TableRow>
                             )}
@@ -177,4 +221,4 @@ const UsbLogs = () => {
     );
 };
 
-export default UsbLogs; 
+export default DownloadLogs; 

@@ -9,6 +9,7 @@ namespace MonitoringService
         private UsbMonitor _usbMonitor;
         private ClipboardMonitor _clipboardMonitor;
         private ProcessMonitor _processMonitor;
+        private DownloadsMonitor _downloadsMonitor;
 
         public Service1()
         {
@@ -16,11 +17,25 @@ namespace MonitoringService
             this.ServiceName = "UsbAndClipboardDetectionService";
         }
 
+        private void EnsureEventLogSources()
+        {
+            string[] sources = { "UsbAndClipboardDetectionService", "ApiLogger", "DownloadsMonitor" };
+
+            foreach (var source in sources)
+            {
+                if (!EventLog.SourceExists(source))
+                {
+                    EventLog.CreateEventSource(source, "Application");
+                }
+            }
+        }
+
         protected override void OnStart(string[] args)
         {
             try
             {
-                EventLog.WriteEntry("Service is starting...");
+                EnsureEventLogSources();
+                EventLog.WriteEntry("UsbAndClipboardDetectionService", "Service is starting...");
 
                 _usbMonitor = new UsbMonitor();
                 _usbMonitor.StartUsbDetection();
@@ -31,13 +46,17 @@ namespace MonitoringService
                 _processMonitor = new ProcessMonitor();
                 _processMonitor.StartProcessMonitoring();
 
-                EventLog.WriteEntry("Service has started successfully.");
+                _downloadsMonitor = new DownloadsMonitor();
+                _downloadsMonitor.StartMonitoring();
+
+                EventLog.WriteEntry("UsbAndClipboardDetectionService", "Service has started successfully.");
             }
             catch (Exception ex)
             {
-                EventLog.WriteEntry("Error in OnStart: " + ex.Message, EventLogEntryType.Error);
+                EventLog.WriteEntry("UsbAndClipboardDetectionService", "Error in OnStart: " + ex.Message, EventLogEntryType.Error);
             }
         }
+
 
         protected override void OnStop()
         {
@@ -45,9 +64,10 @@ namespace MonitoringService
             {
                 EventLog.WriteEntry("Service is stopping...");
 
-                _usbMonitor.StopUsbDetection();
-                _clipboardMonitor.StopClipboardMonitoring();
-                _processMonitor.StopProcessMonitoring();
+                _usbMonitor?.StopUsbDetection();
+                _clipboardMonitor?.StopClipboardMonitoring();
+                _processMonitor?.StopProcessMonitoring();
+                _downloadsMonitor?.StopMonitoring();
 
                 EventLog.WriteEntry("Service has stopped.");
             }

@@ -11,14 +11,14 @@ namespace MonitoringService
     {
         private Thread _usbWatcherThread;
         private ManagementEventWatcher _usbWatcher;
-        private EventLog _eventLog;  // Create an instance of EventLog
-        private bool _isRunning;     // To track if the monitoring is running
+        private EventLog _eventLog;  
+        private bool _isRunning;     
 
-        public UsbMonitor()  // Constructor to initialize the EventLog instance
+        public UsbMonitor()
         {
-            _eventLog = new EventLog();  // Initialize the EventLog instance
-            _eventLog.Source = "UsbMonitoringService";  // You can change the source name as needed
-            _isRunning = false;           // Initial state is not running
+            _eventLog = new EventLog();  
+            _eventLog.Source = "UsbMonitoringService";  
+            _isRunning = false;          
         }
 
         public void StartUsbDetection()

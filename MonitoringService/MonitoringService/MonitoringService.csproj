@@ -196,6 +196,7 @@
   <ItemGroup>
     <Compile Include="ApiLogger.cs" />
     <Compile Include="ClipboardMonitor.cs" />
+    <Compile Include="DownloadsMonitor.cs" />
     <Compile Include="ProcessMonitor.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="ProjectInstaller.cs">

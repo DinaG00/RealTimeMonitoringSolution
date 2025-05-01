@@ -2,21 +2,29 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const path = require('path');
 
 const app = express();
 const PORT = 5001;
 
+// Database path
+const dbPath = path.join(__dirname, 'database', 'monitoring.db');
+
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: 'http://localhost:3000', // Allow requests from React frontend
+    methods: ['GET', 'POST'],
+    credentials: true
+}));
 app.use(bodyParser.json());
 
 // Connect to SQLite database
-const db = new sqlite3.Database('./database/monitoring.db', (err) => {
+const db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
         console.error('Database connection error:', err.message);
         process.exit(1);
     }
-    console.log('Connected to SQLite database.');
+    console.log('Connected to SQLite database at:', dbPath);
     
     // Check if tables exist
     db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='usb_logs'", [], (err, row) => {
@@ -28,7 +36,8 @@ const db = new sqlite3.Database('./database/monitoring.db', (err) => {
         // If tables don't exist, initialize them
         if (!row) {
             console.log('Tables do not exist, initializing database...');
-            db.exec(require('fs').readFileSync('./database/init.sql', 'utf8'), (err) => {
+            const initSqlPath = path.join(__dirname, 'database', 'init.sql');
+            db.exec(require('fs').readFileSync(initSqlPath, 'utf8'), (err) => {
                 if (err) {
                     console.error('Database initialization error:', err.message);
                     process.exit(1);
@@ -41,7 +50,8 @@ const db = new sqlite3.Database('./database/monitoring.db', (err) => {
                         if (err) {
                             console.error('Error checking table data:', err.message);
                         } else if (row.count === 0) {
-                            db.exec(require('fs').readFileSync('./database/test_data.sql', 'utf8'), (err) => {
+                            const testDataPath = path.join(__dirname, 'database', 'test_data.sql');
+                            db.exec(require('fs').readFileSync(testDataPath, 'utf8'), (err) => {
                                 if (err) {
                                     console.error('Test data insertion error:', err.message);
                                 } else {
@@ -129,6 +139,29 @@ app.post('/logs/processes', (req, res) => {
     });
 });
 
+// API to insert download logs
+app.post('/logs/downloads', (req, res) => {
+    const { pc, file_name, file_type, content } = req.body;
+
+    console.log("Received download log:", req.body);
+
+    if (!pc || !file_name || !file_type) {
+        console.error("Missing required fields in request");
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const sql = `INSERT INTO downloads_logs (pc, file_name, file_type, content, timestamp) 
+                 VALUES (?, ?, ?, ?, datetime('now', '+2 hours'))`;
+    db.run(sql, [pc, file_name, file_type, content], function (err) {
+        if (err) {
+            console.error("Database Insert Error:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        console.log("Inserted download log with ID:", this.lastID);
+        res.json({ id: this.lastID });
+    });
+});
+
 // API to fetch USB logs
 app.get('/logs/usb', (req, res) => {
     console.log('Fetching USB logs...');
@@ -192,6 +225,29 @@ app.get('/logs/processes', (req, res) => {
             return res.status(500).json({ error: err.message });
         }
         console.log('Found process logs:', rows.length);
+        res.json(rows);
+    });
+});
+
+// API to fetch download logs
+app.get('/logs/downloads', (req, res) => {
+    console.log('Fetching download logs...');
+    db.all(`
+        SELECT 
+            id, 
+            pc,
+            file_name,
+            file_type,
+            content,
+            strftime('%Y-%m-%d %H:%M:%S', datetime(timestamp)) as timestamp
+        FROM downloads_logs 
+        ORDER BY timestamp DESC
+    `, [], (err, rows) => {
+        if (err) {
+            console.error("Error fetching download logs:", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        console.log('Found download logs:', rows.length);
         res.json(rows);
     });
 });

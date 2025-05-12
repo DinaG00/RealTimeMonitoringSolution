@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace MonitoringService
 {
@@ -13,6 +14,7 @@ namespace MonitoringService
         private Dictionary<int, TrackedProcess> _trackedProcesses;
         private EventLog _eventLog;
         private bool _isRunning;
+        private HashSet<string> _blacklistedApplications;
 
         public ProcessMonitor()
         {
@@ -20,6 +22,22 @@ namespace MonitoringService
             _eventLog.Source = "ProcessMonitoringService";
             _trackedProcesses = new Dictionary<int, TrackedProcess>();
             _isRunning = false;
+            _blacklistedApplications = new HashSet<string>();
+            // Initial fetch of blacklist
+            _ = UpdateBlacklistAsync();
+        }
+
+        private async Task UpdateBlacklistAsync()
+        {
+            try
+            {
+                _blacklistedApplications = await ApiLogger.GetBlacklistedApplicationsAsync();
+                _eventLog.WriteEntry($"Updated blacklist with {_blacklistedApplications.Count} applications", EventLogEntryType.Information);
+            }
+            catch (Exception ex)
+            {
+                _eventLog.WriteEntry($"Error updating blacklist: {ex.Message}", EventLogEntryType.Error);
+            }
         }
 
         public void StartProcessMonitoring()
@@ -30,9 +48,7 @@ namespace MonitoringService
                 return;
             }
 
-            //LaunchChromeWithDebugging();
-
-            _processMonitoringThread = new Thread(() =>
+            _processMonitoringThread = new Thread(async () =>
             {
                 try
                 {
@@ -43,8 +59,10 @@ namespace MonitoringService
                     {
                         try
                         {
+                            // Update blacklist periodically
+                            await UpdateBlacklistAsync();
+
                             var currentProcesses = Process.GetProcesses();
-                            //LogChromeTabs();  
                             var currentProcessIds = new HashSet<int>();
 
                             foreach (var process in currentProcesses)
@@ -56,21 +74,30 @@ namespace MonitoringService
                                 if (string.IsNullOrWhiteSpace(windowTitle))
                                     windowTitle = "(No window title)";
 
-                                if (IsRelevantProcess(process.ProcessName, windowTitle) && !_trackedProcesses.ContainsKey(process.Id))
+                                // Check if process is blacklisted
+                                bool isBlacklisted = _blacklistedApplications.Contains(process.ProcessName.ToLower() + ".exe");
+
+                                if ((isBlacklisted || IsRelevantProcess(process.ProcessName, windowTitle)) && !_trackedProcesses.ContainsKey(process.Id))
                                 {
                                     var trackedProcess = new TrackedProcess
                                     {
                                         Id = process.Id,
                                         ProcessName = process.ProcessName,
                                         WindowTitle = windowTitle,
-                                        StartTime = DateTime.Now
+                                        StartTime = DateTime.Now,
+                                        IsBlacklisted = isBlacklisted
                                     };
 
                                     _trackedProcesses.Add(process.Id, trackedProcess);
 
-                                    string processData = $"{trackedProcess.ProcessName}|{trackedProcess.WindowTitle}|Started at {trackedProcess.StartTime:yyyy-MM-dd HH:mm:ss}";
+                                    string processData = $"{trackedProcess.ProcessName}|{trackedProcess.WindowTitle}|Started at {trackedProcess.StartTime:yyyy-MM-dd HH:mm:ss}|{(isBlacklisted ? "BLACKLISTED" : "Allowed")}";
                                     _eventLog.WriteEntry($"[Started] {processData}");
                                     ApiLogger.Log("ProcessStart", processData);
+
+                                    if (isBlacklisted)
+                                    {
+                                        _eventLog.WriteEntry($"BLACKLISTED APPLICATION DETECTED: {process.ProcessName}", EventLogEntryType.Warning);
+                                    }
                                 }
 
                                 currentProcessIds.Add(process.Id);
@@ -80,12 +107,9 @@ namespace MonitoringService
 
                             foreach (var trackedProcess in endedProcesses)
                             {
-                                if (IsRelevantProcess(trackedProcess.Value.ProcessName, trackedProcess.Value.WindowTitle))
-                                {
-                                    string processData = $"{trackedProcess.Value.ProcessName}|{trackedProcess.Value.WindowTitle}|Ended at {DateTime.Now:yyyy-MM-dd HH:mm:ss}";
-                                    _eventLog.WriteEntry($"[Ended] {processData}");
-                                    ApiLogger.Log("ProcessEnd", processData);
-                                }
+                                string processData = $"{trackedProcess.Value.ProcessName}|{trackedProcess.Value.WindowTitle}|Ended at {DateTime.Now:yyyy-MM-dd HH:mm:ss}|{(trackedProcess.Value.IsBlacklisted ? "BLACKLISTED" : "Allowed")}";
+                                _eventLog.WriteEntry($"[Ended] {processData}");
+                                ApiLogger.Log("ProcessEnd", processData);
 
                                 _trackedProcesses.Remove(trackedProcess.Key);
                             }
@@ -118,100 +142,23 @@ namespace MonitoringService
 
             try
             {
-                _processMonitoringThread?.Abort();
                 _isRunning = false;
+                if (_processMonitoringThread != null && _processMonitoringThread.IsAlive)
+                {
+                    _processMonitoringThread.Join(5000); // Wait up to 5 seconds for the thread to finish
+                }
                 _eventLog.WriteEntry("Process monitoring stopped.");
             }
             catch (Exception ex)
             {
-                _eventLog.WriteEntry("Error stopping process monitoring: " + ex.Message, EventLogEntryType.Error);
+                _eventLog.WriteEntry($"Error stopping process monitoring: {ex.Message}", EventLogEntryType.Error);
             }
         }
 
         private bool IsRelevantProcess(string processName, string windowTitle)
         {
-            var relevantProcessNames = new HashSet<string>
-            {
-                "teamviewer", "anydesk", "rustdesk", "ultraviewer", "vnc", "zoom", "skype", "teams", "meet",
-                "virtualbox", "vmware", "bluestacks", "nox", "genymotion", "qemu", "sandboxie",
-                "code", "sublime_text", "notepad++", "pycharm", "intellij", "eclipse", "androidstudio",
-                "msedge", "firefox", "brave", "opera", "vivaldi",
-                 "powershell", "python", "java", "node", "bash", "wscript", "cscript",
-                "ditto", "clipboardfusion", "clipboardmanager", "snagit", "lightshot", "notepad", "word",
-                "discord", "slack", "telegram", "whatsapp", "signal", "messenger",
-                "obs", "xsplit", "bandicam", "snippingtool", "lightshot", "sharex", "shadowplay",
-                "autohotkey", "macrorecorder", "jitbit"
-            };
-            return relevantProcessNames.Contains(processName.ToLower());
+            // Only check if the process is blacklisted
+            return _blacklistedApplications.Contains(processName.ToLower());
         }
-
-        //private void LaunchChromeWithDebugging()
-        //{
-        //    try
-        //    {
-        //        var chromePath = GetChromePath();
-        //        if (chromePath == null)
-        //        {
-        //            _eventLog.WriteEntry("Chrome not found on this system.", EventLogEntryType.Warning);
-        //            return;
-        //        }
-
-        //        var startInfo = new ProcessStartInfo
-        //        {
-        //            FileName = chromePath,
-        //            Arguments = "--remote-debugging-port=9222 --new-window --no-first-run --no-default-browser-check",
-        //            UseShellExecute = false,
-        //            CreateNoWindow = true
-        //        };
-
-        //        Process.Start(startInfo);
-        //        _eventLog.WriteEntry("Launched Chrome with remote debugging enabled.", EventLogEntryType.Information);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _eventLog.WriteEntry("Failed to launch Chrome: " + ex.Message, EventLogEntryType.Error);
-        //    }
-        //}
-
-
-        //private string GetChromePath()
-        //{
-        //    string[] possiblePaths =
-        //    {
-        //        Environment.ExpandEnvironmentVariables(@"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
-        //        Environment.ExpandEnvironmentVariables(@"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
-        //        Environment.ExpandEnvironmentVariables(@"%LocalAppData%\Google\Chrome\Application\chrome.exe")
-        //    };
-
-        //    return possiblePaths.FirstOrDefault(File.Exists);
-        //}
-        //private void LogChromeTabs()
-        //{
-        //    try
-        //    {
-        //        using (var client = new System.Net.WebClient())
-        //        {
-        //            string json = client.DownloadString("http://localhost:9222/json");
-        //            if (!string.IsNullOrEmpty(json))
-        //            {
-        //                var matches = System.Text.RegularExpressions.Regex.Matches(json, "\"title\":\"(.*?)\",\"url\":\"(.*?)\"");
-        //                foreach (System.Text.RegularExpressions.Match match in matches)
-        //                {
-        //                    string title = match.Groups[1].Value;
-        //                    string url = match.Groups[2].Value;
-
-        //                    string logEntry = $"Chrome Tab - Title: {title}, URL: {url}";
-        //                    _eventLog.WriteEntry(logEntry, EventLogEntryType.Information);
-        //                    ApiLogger.Log("ProcessStart", $"chrome|{title} - {url}|Detected Chrome tab");
-        //                }
-        //            }
-        //        }
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        _eventLog.WriteEntry("Error fetching Chrome tabs: " + ex.Message, EventLogEntryType.Error);
-        //    }
-        //}
-
     }
 }

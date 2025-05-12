@@ -8,7 +8,8 @@ import {
     TableCell,
     Box,
     Card,
-    CardContent 
+    CardContent,
+    Tooltip
 } from '@mui/material';
 import { format } from 'date-fns';
 
@@ -43,6 +44,23 @@ const DownloadLogs = () => {
         if (!timestamp) return '-';
         const date = new Date(timestamp);
         return format(date, 'yyyy-MM-dd HH:mm:ss');
+    };
+
+    const formatFileSize = (bytes) => {
+        if (!bytes) return '-';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let size = bytes;
+        let unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.length - 1) {
+            size /= 1024;
+            unitIndex++;
+        }
+        return `${size.toFixed(2)} ${units[unitIndex]}`;
+    };
+
+    const truncateContent = (content) => {
+        if (!content) return '-';
+        return content.length > 100 ? content.substring(0, 100) + '...' : content;
     };
 
     return (
@@ -158,7 +176,7 @@ const DownloadLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.pc}
+                                            {log.pc_id}
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
@@ -174,7 +192,7 @@ const DownloadLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.file_type}
+                                            {log.file_type || '-'}
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
@@ -186,7 +204,9 @@ const DownloadLogs = () => {
                                                 whiteSpace: 'nowrap'
                                             }}
                                         >
-                                            {log.content || 'No preview available'}
+                                            <Tooltip title={log.content || '-'}>
+                                                <span>{truncateContent(log.content)}</span>
+                                            </Tooltip>
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 

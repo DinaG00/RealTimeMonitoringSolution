@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Text;
@@ -12,6 +13,9 @@ namespace MonitoringService
     {
         private static readonly HttpClient client;
         private static readonly string pcId = Environment.MachineName;
+        private static HashSet<string> _blacklistedApplications = new HashSet<string>();
+        private static DateTime _lastBlacklistFetch = DateTime.MinValue;
+        private static readonly TimeSpan _blacklistRefreshInterval = TimeSpan.FromMinutes(5);
 
         static ApiLogger()
         {
@@ -19,12 +23,50 @@ namespace MonitoringService
             {
                 Timeout = TimeSpan.FromSeconds(30)
             };
+
+            // C# 7.3 doesn't support discard (_), so we explicitly start task
+            Task.Run(() => FetchBlacklistAsync());
         }
 
         public static void Log(string type, string data)
         {
             EventLog.WriteEntry("ApiLogger", $"Attempting to log {type} event with data: {data}", EventLogEntryType.Information);
-            _ = SendLogAsync(type, data);
+            Task.Run(() => SendLogAsync(type, data));
+        }
+
+        public static async Task<HashSet<string>> GetBlacklistedApplicationsAsync()
+        {
+            if (DateTime.Now - _lastBlacklistFetch > _blacklistRefreshInterval)
+            {
+                await FetchBlacklistAsync();
+            }
+            return _blacklistedApplications;
+        }
+
+        private static async Task FetchBlacklistAsync()
+        {
+            try
+            {
+                EventLog.WriteEntry("ApiLogger", "Fetching blacklist from server...", EventLogEntryType.Information);
+                var response = await client.GetAsync("http://localhost:5001/application-lists/blacklist");
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var blacklist = System.Text.Json.JsonSerializer.Deserialize<List<string>>(content);
+                    _blacklistedApplications = new HashSet<string>(blacklist, StringComparer.OrdinalIgnoreCase);
+                    _lastBlacklistFetch = DateTime.Now;
+                    EventLog.WriteEntry("ApiLogger", $"Successfully fetched blacklist with {_blacklistedApplications.Count} applications", EventLogEntryType.Information);
+                }
+                else
+                {
+                    EventLog.WriteEntry("ApiLogger", $"Failed to fetch blacklist. Status code: {response.StatusCode}", EventLogEntryType.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                EventLog.WriteEntry("ApiLogger", $"Error fetching blacklist: {ex.Message}", EventLogEntryType.Error);
+            }
         }
 
         private static async Task SendLogAsync(string type, string data)
@@ -41,23 +83,25 @@ namespace MonitoringService
                     case "USB":
                         logData = CreateUsbLogData(data);
                         break;
-
                     case "Clipboard":
                         logData = await CreateClipboardLogData(data);
                         break;
-
                     case "ProcessStart":
                     case "ProcessEnd":
                         logData = await CreateProcessLogData(type, data);
                         break;
-
                     case "Download":
                         logData = await CreateDownloadLogData(data);
                         break;
-
                     default:
                         logData = CreateGeneralLogData(data);
                         break;
+                }
+
+                if (logData == null)
+                {
+                    EventLog.WriteEntry("ApiLogger", $"Log data is null. Skipping log for type {type}", EventLogEntryType.Warning);
+                    return;
                 }
 
                 var json = System.Text.Json.JsonSerializer.Serialize(logData);
@@ -138,8 +182,8 @@ namespace MonitoringService
                 process_name = processName,
                 window_title = windowTitle,
                 action = type,
-                start_time = type == "ProcessStart" ? now : (DateTime?)null,
-                end_time = type == "ProcessEnd" ? now : (DateTime?)null
+                start_time = type == "ProcessStart" ? (DateTime?)now : null,
+                end_time = type == "ProcessEnd" ? (DateTime?)now : null
             };
         }
 
@@ -159,7 +203,7 @@ namespace MonitoringService
             {
                 try
                 {
-                    var lines = File.ReadLines(filePath).Take(3); // Read the first 3 lines
+                    var lines = File.ReadLines(filePath).Take(3);
                     fileContent = string.Join(Environment.NewLine, lines);
                 }
                 catch (Exception ex)
@@ -176,7 +220,6 @@ namespace MonitoringService
                 timestamp = DateTime.Now
             };
         }
-
 
         private static object CreateGeneralLogData(string data)
         {

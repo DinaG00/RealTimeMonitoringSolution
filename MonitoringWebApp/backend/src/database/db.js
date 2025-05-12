@@ -16,7 +16,23 @@ console.log('Database path:', dbPath);
 const dbExists = fs.existsSync(dbPath);
 console.log('Database exists:', dbExists);
 
-const db = new sqlite3.Database(dbPath);
+// Add error handler for database connection
+const db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+        console.error('Error connecting to database:', err);
+        console.error('Error details:', err.message);
+        console.error('Error stack:', err.stack);
+        process.exit(1); // Exit if we can't connect to the database
+    }
+    console.log('Connected to database successfully');
+});
+
+// Add error handler for database operations
+db.on('error', (err) => {
+    console.error('Database error:', err);
+    console.error('Error details:', err.message);
+    console.error('Error stack:', err.stack);
+});
 
 // Initialize database with schema
 const schemaPath = path.join(__dirname, 'schema.sql');

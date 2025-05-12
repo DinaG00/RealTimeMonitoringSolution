@@ -7,6 +7,7 @@ import ProcessLogs from './components/ProcessLogs';
 import UsbLogs from './components/UsbLogs';
 import ClipboardLogs from './components/ClipboardLogs';
 import DownloadLogs from './components/DownloadLogs';
+import ApplicationLists from './components/ApplicationLists';
 
 const Home = () => (
     <Box sx={{ mt: 4 }}>
@@ -42,35 +43,35 @@ function App() {
             <CssBaseline />
             <Router>
                 <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-                    <AppBar position="static" elevation={0}>
-                        <Toolbar sx={{ justifyContent: 'space-between' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                <img 
-                                    src="/Logo_ASE.png" 
-                                    alt="ASE Logo" 
-                                    style={{ 
-                                        height: 60,
-                                        width: 'auto',
-                                        marginLeft: '8px'
-                                    }} 
-                                />
-                                <Typography
-                                    variant="h6"
+                    <AppBar position="static" color="default" elevation={1}>
+                        <Toolbar>
+                            <Typography
+                                variant="h6"
+                                component={Link}
+                                to="/"
+                                sx={{
+                                    flexGrow: 1,
+                                    textDecoration: 'none',
+                                    color: 'inherit',
+                                    fontWeight: 600
+                                }}
+                            >
+                                Monitoring Dashboard
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 2 }}>
+                                <Button
                                     component={Link}
-                                    to="/"
+                                    to="/configure"
                                     sx={{
-                                        fontWeight: 600,
                                         color: theme.palette.primary.main,
-                                        textDecoration: 'none',
+                                        fontWeight: 500,
                                         '&:hover': {
-                                            color: theme.palette.primary.dark,
+                                            backgroundColor: 'rgba(0, 120, 212, 0.04)',
                                         },
                                     }}
                                 >
-                                    Real-Time Monitoring System
-                                </Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', gap: 2 }}>
+                                    Configure Lists
+                                </Button>
                                 <Button
                                     component={Link}
                                     to="/process"
@@ -139,6 +140,7 @@ function App() {
                     >
                         <Routes>
                             <Route path="/" element={<Home />} />
+                            <Route path="/configure" element={<ApplicationLists />} />
                             <Route path="/process" element={<ProcessLogs />} />
                             <Route path="/usb" element={<UsbLogs />} />
                             <Route path="/clipboard" element={<ClipboardLogs />} />

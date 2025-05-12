@@ -13,7 +13,7 @@ const dbPath = path.join(__dirname, 'database', 'monitoring.db');
 // Middleware
 app.use(cors({
     origin: 'http://localhost:3000', // Allow requests from React frontend
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     credentials: true
 }));
 app.use(bodyParser.json());
@@ -141,7 +141,8 @@ app.post('/logs/processes', (req, res) => {
 
 // API to insert download logs
 app.post('/logs/downloads', (req, res) => {
-    const { pc, file_name, file_type, content } = req.body;
+    const pc = req.body.pc || req.body.pc_id;
+    const { file_name, file_type, content } = req.body;
 
     console.log("Received download log:", req.body);
 
@@ -250,6 +251,118 @@ app.get('/logs/downloads', (req, res) => {
         console.log('Found download logs:', rows.length);
         res.json(rows);
     });
+});
+
+// API to fetch process logs (alias for /logs/process)
+app.get('/logs/process', (req, res) => {
+    db.all(`
+        SELECT 
+            id, 
+            pc,
+            process_name,
+            action,
+            strftime('%Y-%m-%d %H:%M:%S', datetime(start_time)) as start_time,
+            strftime('%Y-%m-%d %H:%M:%S', datetime(end_time)) as end_time
+        FROM processes_logs 
+        ORDER BY start_time DESC
+    `, [], (err, rows) => {
+        if (err) {
+            console.error("Error fetching process logs (alias):", err.message);
+            return res.status(500).json({ error: err.message });
+        }
+        console.log('Found process logs (alias):', rows.length);
+        res.json(rows);
+    });
+});
+
+// API to clear process logs (alias for /logs/process)
+app.delete('/logs/process', (req, res) => {
+    db.run('DELETE FROM processes_logs', [], function (err) {
+        if (err) {
+            console.error('Error clearing process logs (alias):', err);
+            return res.status(500).json({ error: 'Failed to clear process logs' });
+        }
+        res.json({ message: 'Process logs cleared successfully' });
+    });
+});
+
+// --- Application Lists Endpoints ---
+
+// Get all applications
+app.get('/application-lists', (req, res) => {
+    db.all(
+        'SELECT * FROM application_lists ORDER BY list_type, application_name',
+        [],
+        (err, rows) => {
+            if (err) {
+                console.error('Error fetching applications:', err);
+                return res.status(500).json({ error: 'Failed to fetch applications' });
+            }
+            res.json(rows);
+        }
+    );
+});
+
+// Add new application
+app.post('/application-lists', (req, res) => {
+    const { application_name, list_type } = req.body;
+    if (!application_name || !list_type) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (!['whitelist', 'blacklist'].includes(list_type)) {
+        return res.status(400).json({ error: 'Invalid list type' });
+    }
+    db.run(
+        'INSERT INTO application_lists (application_name, list_type) VALUES (?, ?)',
+        [application_name, list_type],
+        function (err) {
+            if (err) {
+                console.error('Error adding application:', err);
+                return res.status(500).json({ error: 'Failed to add application' });
+            }
+            res.status(201).json({ id: this.lastID });
+        }
+    );
+});
+
+// Delete application
+app.delete('/application-lists/:id', (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    console.log('Received delete request for application id:', id);
+    if (isNaN(id)) {
+        console.error('Invalid id received for deletion:', req.params.id);
+        return res.status(400).json({ error: 'Invalid application id' });
+    }
+    db.run(
+        'DELETE FROM application_lists WHERE id = ?',
+        [id],
+        function (err) {
+            if (err) {
+                console.error('Error deleting application:', err);
+                return res.status(500).json({ error: 'Failed to delete application' });
+            }
+            if (this.changes === 0) {
+                console.warn('No application found with id:', id);
+                return res.status(404).json({ error: 'Application not found' });
+            }
+            res.json({ message: 'Application deleted successfully' });
+        }
+    );
+});
+
+// Get blacklist
+app.get('/application-lists/blacklist', (req, res) => {
+    db.all(
+        'SELECT application_name FROM application_lists WHERE list_type = ?',
+        ['blacklist'],
+        (err, rows) => {
+            if (err) {
+                console.error('Error fetching blacklist:', err);
+                return res.status(500).json({ error: 'Failed to fetch blacklist' });
+            }
+            res.json(rows.map(app => app.application_name));
+        }
+    );
 });
 
 // Start server

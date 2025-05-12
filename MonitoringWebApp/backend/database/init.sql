@@ -4,6 +4,14 @@ DROP TABLE IF EXISTS clipboard_logs;
 DROP TABLE IF EXISTS processes_logs;
 DROP TABLE IF EXISTS downloads_logs;
 
+-- Create application lists table
+CREATE TABLE IF NOT EXISTS application_lists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    application_name TEXT NOT NULL,
+    list_type TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create USB logs table
 CREATE TABLE usb_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

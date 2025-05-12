@@ -88,7 +88,6 @@ namespace MonitoringService
 
         private static string GetUrlForType(string type)
         {
-            // Return the appropriate URL based on the log type
             switch (type)
             {
                 case "USB":

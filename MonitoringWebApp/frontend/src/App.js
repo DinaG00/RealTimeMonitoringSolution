@@ -14,24 +14,23 @@ const Home = () => (
             Welcome to the Monitoring Dashboard
         </Typography>
         <Typography variant="body1" paragraph>
-            This dashboard provides real-time monitoring of system activities including USB device connections,
-            clipboard operations, process activities, and file downloads.
+        This application provides a real-time tracking and monitoring of system activities to detect suspicious behavior and prevent cheating during exams.
         </Typography>
         <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
             Available Monitoring Features:
         </Typography>
         <Box component="ul" sx={{ pl: 3 }}>
             <Typography component="li" sx={{ mb: 1 }}>
-                USB Device Monitoring - Track device connections and disconnections
+                USB Device Monitoring - Track external memory device connections
             </Typography>
             <Typography component="li" sx={{ mb: 1 }}>
-                Clipboard Monitoring - Monitor clipboard content changes
+                Clipboard Monitoring - Track clipboard content changes
             </Typography>
             <Typography component="li" sx={{ mb: 1 }}>
                 Process Monitoring - Track application starts and stops
             </Typography>
             <Typography component="li" sx={{ mb: 1 }}>
-                Download Monitoring - Track file downloads and their content
+                Download Monitoring - Track file downloads
             </Typography>
         </Box>
     </Box>

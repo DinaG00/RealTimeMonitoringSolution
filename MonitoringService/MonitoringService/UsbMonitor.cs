@@ -26,7 +26,7 @@ namespace MonitoringService
             if (_isRunning)
             {
                 _eventLog.WriteEntry("USB monitoring is already running.", EventLogEntryType.Warning);
-                return;  // If already running, don't start a new thread
+                return;  
             }
 
             _usbWatcherThread = new Thread(() =>

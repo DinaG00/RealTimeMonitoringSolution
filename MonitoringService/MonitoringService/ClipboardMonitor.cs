@@ -24,7 +24,7 @@ namespace MonitoringService
             if (_isRunning)
             {
                 _eventLog.WriteEntry("Clipboard monitoring is already running.", EventLogEntryType.Warning);
-                return;  // Prevent starting again if already running
+                return;  
             }
 
             _clipboardMonitoringThread = new Thread(() =>

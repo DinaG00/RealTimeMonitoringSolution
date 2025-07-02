@@ -8,6 +8,7 @@ import UsbLogs from './components/UsbLogs';
 import ClipboardLogs from './components/ClipboardLogs';
 import DownloadLogs from './components/DownloadLogs';
 import ApplicationLists from './components/ApplicationLists';
+import PcManagement from './components/PcManagement';
 
 const Home = () => (
     <Box sx={{ mt: 4 }}>
@@ -124,6 +125,19 @@ function App() {
                                 >
                                     Download Logs
                                 </Button>
+                                <Button
+                                    component={Link}
+                                    to="/pcs"
+                                    sx={{
+                                        color: theme.palette.primary.main,
+                                        fontWeight: 500,
+                                        '&:hover': {
+                                            backgroundColor: 'rgba(0, 120, 212, 0.04)',
+                                        },
+                                    }}
+                                >
+                                    PC Management
+                                </Button>
                             </Box>
                         </Toolbar>
                     </AppBar>
@@ -145,6 +159,7 @@ function App() {
                             <Route path="/usb" element={<UsbLogs />} />
                             <Route path="/clipboard" element={<ClipboardLogs />} />
                             <Route path="/downloads" element={<DownloadLogs />} />
+                            <Route path="/pcs" element={<PcManagement />} />
                         </Routes>
                     </Container>
 

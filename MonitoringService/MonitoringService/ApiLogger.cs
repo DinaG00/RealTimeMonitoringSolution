@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json; 
 
 namespace MonitoringService
 {
@@ -24,7 +25,6 @@ namespace MonitoringService
                 Timeout = TimeSpan.FromSeconds(30)
             };
 
-            // C# 7.3 doesn't support discard (_), so we explicitly start task
             Task.Run(() => FetchBlacklistAsync());
         }
 
@@ -53,7 +53,7 @@ namespace MonitoringService
                 if (response.IsSuccessStatusCode)
                 {
                     var content = await response.Content.ReadAsStringAsync();
-                    var blacklist = System.Text.Json.JsonSerializer.Deserialize<List<string>>(content);
+                    var blacklist = JsonConvert.DeserializeObject<List<string>>(content); // <-- Changed
                     _blacklistedApplications = new HashSet<string>(blacklist, StringComparer.OrdinalIgnoreCase);
                     _lastBlacklistFetch = DateTime.Now;
                     EventLog.WriteEntry("ApiLogger", $"Successfully fetched blacklist with {_blacklistedApplications.Count} applications", EventLogEntryType.Information);
@@ -104,7 +104,7 @@ namespace MonitoringService
                     return;
                 }
 
-                var json = System.Text.Json.JsonSerializer.Serialize(logData);
+                var json = JsonConvert.SerializeObject(logData); // <-- Changed
                 EventLog.WriteEntry("ApiLogger", $"Request content: {json}", EventLogEntryType.Information);
 
                 var content = new StringContent(json, Encoding.UTF8, "application/json");

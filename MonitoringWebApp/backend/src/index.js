@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const db = require('./database/db');
 const logsRouter = require('./routes/logs');
 const applicationListsRouter = require('./routes/applicationLists');
 

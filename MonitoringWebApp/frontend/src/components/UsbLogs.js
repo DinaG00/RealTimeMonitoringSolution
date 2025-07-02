@@ -100,7 +100,7 @@ const UsbLogs = () => {
                                         borderBottomColor: 'primary.main'
                                     }}
                                 >
-                                    Action
+                                    Device Name
                                 </TableCell>
                                 <TableCell 
                                     sx={{ 
@@ -134,7 +134,7 @@ const UsbLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.pc}
+                                            {log.pc_id} ({log.pc_name})
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
@@ -142,7 +142,7 @@ const UsbLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.data}
+                                            {log.device_name}
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
@@ -150,7 +150,7 @@ const UsbLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {formatTime(log.timestamp)}
+                                            {formatTime(log.local_timestamp)}
                                         </TableCell>
                                     </TableRow>
                                 ))

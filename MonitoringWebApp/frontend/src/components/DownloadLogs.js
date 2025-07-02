@@ -142,18 +142,6 @@ const DownloadLogs = () => {
                                         borderBottomColor: 'primary.main'
                                     }}
                                 >
-                                    Content Preview
-                                </TableCell>
-                                <TableCell 
-                                    sx={{ 
-                                        fontWeight: 600,
-                                        color: 'text.primary',
-                                        fontSize: '0.875rem',
-                                        backgroundColor: 'grey.50',
-                                        borderBottom: '2px solid',
-                                        borderBottomColor: 'primary.main'
-                                    }}
-                                >
                                     Time
                                 </TableCell>
                             </TableRow>
@@ -176,7 +164,7 @@ const DownloadLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.pc_id}
+                                            {log.pc_id} ({log.pc_name})
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
@@ -192,21 +180,7 @@ const DownloadLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.file_type || '-'}
-                                        </TableCell>
-                                        <TableCell 
-                                            sx={{ 
-                                                fontSize: '0.875rem',
-                                                color: 'text.primary',
-                                                maxWidth: '300px',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap'
-                                            }}
-                                        >
-                                            <Tooltip title={log.content || '-'}>
-                                                <span>{truncateContent(log.content)}</span>
-                                            </Tooltip>
+                                            {log.file_type}
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
@@ -214,7 +188,7 @@ const DownloadLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {formatTime(log.timestamp)}
+                                            {formatTime(log.local_timestamp)}
                                         </TableCell>
                                     </TableRow>
                                 ))

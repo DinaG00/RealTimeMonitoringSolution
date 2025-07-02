@@ -14,19 +14,36 @@ import {
     Tab,
     Alert,
     Snackbar,
-    Divider
+    Divider,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogContentText,
+    DialogActions,
+    MenuItem,
+    Select,
+    FormControl,
+    InputLabel
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 
 const ApplicationLists = () => {
     const [applications, setApplications] = useState([]);
-    const [newApplication, setNewApplication] = useState('');
+    const [nomenclature, setNomenclature] = useState([]);
+    const [selectedAppId, setSelectedAppId] = useState('');
     const [currentTab, setCurrentTab] = useState(0);
     const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+    const [confirmDialog, setConfirmDialog] = useState({
+        open: false,
+        applicationId: '',
+        fromList: '',
+        toList: ''
+    });
 
     useEffect(() => {
         fetchApplications();
+        fetchNomenclature();
     }, []);
 
     const fetchApplications = async () => {
@@ -44,30 +61,49 @@ const ApplicationLists = () => {
         }
     };
 
+    const fetchNomenclature = async () => {
+        try {
+            const response = await fetch('http://localhost:5001/applications');
+            if (response.ok) {
+                const data = await response.json();
+                setNomenclature(data);
+            } else {
+                throw new Error('Failed to fetch nomenclature');
+            }
+        } catch (error) {
+            console.error('Error fetching nomenclature:', error);
+            showSnackbar('Error fetching nomenclature', 'error');
+        }
+    };
+
     const handleTabChange = (event, newValue) => {
         setCurrentTab(newValue);
     };
 
     const handleAddApplication = async () => {
-        if (!newApplication.trim()) {
-            showSnackbar('Please enter an application name', 'error');
+        if (!selectedAppId) {
+            showSnackbar('Please select an application', 'error');
             return;
         }
-
-        // Ensure process name is lowercase and ends with .exe
-        let processName = newApplication.trim().toLowerCase();
-        if (!processName.endsWith('.exe')) {
-            processName += '.exe';
-        }
-
         const list_type = currentTab === 0 ? 'whitelist' : 'blacklist';
         const oppositeListType = currentTab === 0 ? 'blacklist' : 'whitelist';
-        // Prevent adding to both lists
-        const existsInOppositeList = applications.some(app => app.application_name === processName && app.list_type === oppositeListType);
-        if (existsInOppositeList) {
-            showSnackbar(`Cannot add to ${list_type}: already present in ${oppositeListType}.`, 'error');
+        // Check if application exists in opposite list
+        const existingApp = applications.find(app => 
+            app.application_id === selectedAppId && app.list_type === oppositeListType
+        );
+        if (existingApp) {
+            setConfirmDialog({
+                open: true,
+                applicationId: selectedAppId,
+                fromList: oppositeListType,
+                toList: list_type
+            });
             return;
         }
+        await addApplication(selectedAppId, list_type);
+    };
+
+    const addApplication = async (application_id, list_type) => {
         try {
             const response = await fetch('http://localhost:5001/application-lists', {
                 method: 'POST',
@@ -75,13 +111,12 @@ const ApplicationLists = () => {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    application_name: processName,
+                    application_id,
                     list_type
                 }),
             });
-
             if (response.ok) {
-                setNewApplication('');
+                setSelectedAppId('');
                 fetchApplications();
                 showSnackbar('Application added successfully', 'success');
             } else {
@@ -92,14 +127,38 @@ const ApplicationLists = () => {
             console.error('Error adding application:', error);
             showSnackbar(error.message, 'error');
         }
+    };
 
-        // Show a warning if adding chrome.exe, msedge.exe, or firefox.exe
-        if (["chrome.exe", "msedge.exe", "firefox.exe"].includes(processName)) {
-            showSnackbar(
-                'Warning: Browsers like Chrome, Edge, and Firefox spawn many background processes. Monitoring or blacklisting them may result in many logs and false positives.',
-                'warning'
-            );
+    const handleConfirmMove = async () => {
+        const { applicationId, fromList, toList } = confirmDialog;
+        // First, find and delete the application from the source list
+        const existingApp = applications.find(app => 
+            app.application_id === applicationId && app.list_type === fromList
+        );
+        if (existingApp) {
+            try {
+                // Delete from source list
+                const deleteResponse = await fetch(
+                    `http://localhost:5001/application-lists/${existingApp.id}`,
+                    { method: 'DELETE' }
+                );
+                if (deleteResponse.ok) {
+                    // Add to target list
+                    await addApplication(applicationId, toList);
+                    showSnackbar(`Application moved from ${fromList} to ${toList}`, 'success');
+                } else {
+                    throw new Error('Failed to move application');
+                }
+            } catch (error) {
+                console.error('Error moving application:', error);
+                showSnackbar('Error moving application', 'error');
+            }
         }
+        setConfirmDialog({ open: false, applicationId: '', fromList: '', toList: '' });
+    };
+
+    const handleCancelMove = () => {
+        setConfirmDialog({ open: false, applicationId: '', fromList: '', toList: '' });
     };
 
     const handleDeleteApplication = async (id) => {
@@ -108,7 +167,6 @@ const ApplicationLists = () => {
                 `http://localhost:5001/application-lists/${id}`,
                 { method: 'DELETE' }
             );
-
             if (response.ok) {
                 fetchApplications();
                 showSnackbar('Application removed successfully', 'success');
@@ -141,7 +199,6 @@ const ApplicationLists = () => {
             <Typography variant="subtitle1" color="text.secondary" gutterBottom>
                 Configure which applications are allowed or forbidden during exams
             </Typography>
-
             <Paper sx={{ mt: 2, mb: 2 }}>
                 <Tabs
                     value={currentTab}
@@ -153,20 +210,23 @@ const ApplicationLists = () => {
                     <Tab label="Whitelist" />
                     <Tab label="Blacklist" />
                 </Tabs>
-
                 <Box sx={{ p: 2 }}>
                     <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                        <TextField
-                            fullWidth
-                            label="Application Name"
-                            value={newApplication}
-                            onChange={(e) => setNewApplication(e.target.value)}
-                            placeholder="Enter application name (e.g., notepad or chrome)"
-                            onKeyPress={(e) => e.key === 'Enter' && handleAddApplication()}
-                            helperText={currentTab === 0 ? 
-                                "Applications that students are allowed to use during exams. Enter the process name, e.g., notepad or chrome." : 
-                                "Applications that students are forbidden to use during exams. Enter the process name, e.g., notepad or chrome."}
-                        />
+                        <FormControl fullWidth>
+                            <InputLabel id="application-select-label">Application</InputLabel>
+                            <Select
+                                labelId="application-select-label"
+                                value={selectedAppId}
+                                label="Application"
+                                onChange={(e) => setSelectedAppId(e.target.value)}
+                            >
+                                {nomenclature.map((app) => (
+                                    <MenuItem key={app.id} value={app.id}>
+                                        {app.display_name} ({app.name})
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
                         <Button
                             variant="contained"
                             startIcon={<AddIcon />}
@@ -175,14 +235,12 @@ const ApplicationLists = () => {
                             Add
                         </Button>
                     </Box>
-
                     <Divider sx={{ my: 2 }} />
-
                     <List>
                         {filteredApplications.map((app) => (
                             <ListItem key={app.id}>
                                 <ListItemText
-                                    primary={app.application_name}
+                                    primary={app.application_display_name + ' (' + app.application_name + ')'}
                                     secondary={`Added on ${new Date(app.created_at).toLocaleString()}`}
                                 />
                                 <ListItemSecondaryAction>
@@ -207,7 +265,23 @@ const ApplicationLists = () => {
                     </List>
                 </Box>
             </Paper>
-
+            <Dialog
+                open={confirmDialog.open}
+                onClose={handleCancelMove}
+            >
+                <DialogTitle>Move Application</DialogTitle>
+                <DialogContent>
+                    <DialogContentText>
+                        {`The application "${nomenclature.find(app => app.id === confirmDialog.applicationId)?.display_name || ''}" is currently in the ${confirmDialog.fromList}. Do you want to move it to the ${confirmDialog.toList}?`}
+                    </DialogContentText>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCancelMove}>Cancel</Button>
+                    <Button onClick={handleConfirmMove} color="primary" autoFocus>
+                        Move
+                    </Button>
+                </DialogActions>
+            </Dialog>
             <Snackbar
                 open={snackbar.open}
                 autoHideDuration={6000}

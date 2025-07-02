@@ -1,6 +1,5 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../database/db');
 
 // Get all applications
 router.get('/', async (req, res) => {

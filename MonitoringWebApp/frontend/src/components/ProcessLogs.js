@@ -229,7 +229,7 @@ const ProcessLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.pc}
+                                            {log.pc_id} ({log.pc_name})
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
@@ -237,7 +237,7 @@ const ProcessLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.process_name}
+                                            {log.application_display_name || log.application_name}
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
@@ -253,7 +253,7 @@ const ProcessLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {formatTime(log.start_time)}
+                                            {formatTime(log.local_timestamp)}
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 

@@ -1,6 +1,11 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Net.Http;
 using System.ServiceProcess;
+using System.Text;
+using System.Text.Json.Serialization;
+using System.Threading;
+using Newtonsoft.Json;
 
 namespace MonitoringService
 {
@@ -10,16 +15,17 @@ namespace MonitoringService
         private ClipboardMonitor _clipboardMonitor;
         private ProcessMonitor _processMonitor;
         private DownloadsMonitor _downloadsMonitor;
+        private Timer _heartbeatTimer;
 
         public Service1()
         {
             InitializeComponent();
-            this.ServiceName = "UsbAndClipboardDetectionService";
+            this.ServiceName = "DetectionService";
         }
 
         private void EnsureEventLogSources()
         {
-            string[] sources = { "UsbAndClipboardDetectionService", "ApiLogger", "DownloadsMonitor" };
+            string[] sources = { "DetectionService", "ApiLogger", "DownloadsMonitor" };
 
             foreach (var source in sources)
             {
@@ -35,7 +41,7 @@ namespace MonitoringService
             try
             {
                 EnsureEventLogSources();
-                EventLog.WriteEntry("UsbAndClipboardDetectionService", "Service is starting...");
+                EventLog.WriteEntry("DetectionService", "Service is starting...");
 
                 _usbMonitor = new UsbMonitor();
                 _usbMonitor.StartUsbDetection();
@@ -49,31 +55,69 @@ namespace MonitoringService
                 _downloadsMonitor = new DownloadsMonitor();
                 _downloadsMonitor.StartMonitoring();
 
-                EventLog.WriteEntry("UsbAndClipboardDetectionService", "Service has started successfully.");
+                _heartbeatTimer = new Timer(SendHeartbeatCallback, null, 0, 60000); // every 5 minutes
+
+                EventLog.WriteEntry("DetectionService", "Service has started successfully.");
             }
             catch (Exception ex)
             {
-                EventLog.WriteEntry("UsbAndClipboardDetectionService", "Error in OnStart: " + ex.Message, EventLogEntryType.Error);
+                EventLog.WriteEntry("DetectionService", "Error in OnStart: " + ex.Message, EventLogEntryType.Error);
             }
         }
 
+        private void SendHeartbeatCallback(object state)
+        {
+            try
+            {
+                SendHeartbeat().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                EventLog.WriteEntry("DetectionService", "Error in SendHeartbeatCallback: " + ex.Message, EventLogEntryType.Error);
+            }
+        }
+
+        private async System.Threading.Tasks.Task SendHeartbeat()
+        {
+            try
+            {
+                using (var client = new HttpClient())
+                {
+                    var pcName = Environment.MachineName;
+                    var payload = new { pc_name = pcName };
+                    var json = JsonConvert.SerializeObject(payload);
+                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                    var response = await client.PostAsync("http://localhost:5001/pcs/heartbeat", content);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        EventLog.WriteEntry("DetectionService", $"Failed to send heartbeat: {response.StatusCode}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                EventLog.WriteEntry("DetectionService", "Error sending heartbeat: " + ex.Message, EventLogEntryType.Error);
+            }
+        }
 
         protected override void OnStop()
         {
             try
             {
-                EventLog.WriteEntry("Service is stopping...");
+                EventLog.WriteEntry("DetectionService", "Service is stopping...");
 
                 _usbMonitor?.StopUsbDetection();
                 _clipboardMonitor?.StopClipboardMonitoring();
                 _processMonitor?.StopProcessMonitoring();
                 _downloadsMonitor?.StopMonitoring();
+                _heartbeatTimer?.Dispose();
 
-                EventLog.WriteEntry("Service has stopped.");
+                EventLog.WriteEntry("DetectionService", "Service has stopped.");
             }
             catch (Exception ex)
             {
-                EventLog.WriteEntry("Error in OnStop: " + ex.Message, EventLogEntryType.Error);
+                EventLog.WriteEntry("DetectionService", "Error in OnStop: " + ex.Message, EventLogEntryType.Error);
             }
         }
     }

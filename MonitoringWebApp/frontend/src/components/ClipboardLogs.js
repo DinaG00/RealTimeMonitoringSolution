@@ -134,16 +134,12 @@ const ClipboardLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {log.pc}
+                                            {log.pc_id} ({log.pc_name})
                                         </TableCell>
                                         <TableCell 
                                             sx={{ 
                                                 fontSize: '0.875rem',
-                                                color: 'text.primary',
-                                                maxWidth: '400px',
-                                                overflow: 'hidden',
-                                                textOverflow: 'ellipsis',
-                                                whiteSpace: 'nowrap'
+                                                color: 'text.primary'
                                             }}
                                         >
                                             {log.content}
@@ -154,7 +150,7 @@ const ClipboardLogs = () => {
                                                 color: 'text.primary'
                                             }}
                                         >
-                                            {formatTime(log.timestamp)}
+                                            {formatTime(log.local_timestamp)}
                                         </TableCell>
                                     </TableRow>
                                 ))

@@ -3,9 +3,11 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const http = require('http');
+const WebSocket = require('ws');
 
 const app = express();
-const PORT = 5001;
+const PORT = process.env.PORT || 5001;
 
 // Database path
 const dbPath = path.join(__dirname, '..', 'database', 'monitoring.db');
@@ -210,30 +212,53 @@ async function getOrCreatePC(pcName) {
     });
 }
 
-// API to insert USB logs
+// API to insert USB logs (accepts either {pc, device_name, action} or {pc, data})
 app.post('/logs/usb', async (req, res) => {
-    const { pc, data, device_name, action } = req.body;
-    if (!pc || (!data && !device_name)) {
-        return res.status(400).json({ error: 'Missing required fields' });
+    let { pc, device_name, action, data } = req.body;
+
+    // If device_name or action are missing, try to parse them from 'data'
+    if ((!device_name || !action) && data) {
+        // Expecting data in the format "DeviceName|Action"
+        const parts = data.split('|');
+        device_name = device_name || (parts.length > 0 ? parts[0] : "");
+        action = action || (parts.length > 1 ? parts[1] : "connected");
     }
 
+    if (!pc || !device_name || !action) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
     try {
         const pcId = await getOrCreatePC(pc);
-        // If data is "USB device inserted!", use device_name instead
-        const deviceName = (data === "USB device inserted!" && device_name) ? device_name : data;
-        const deviceAction = "connected"; // Always set to connected for USB insertions
-        
-        console.log('Received USB log:', { pc, pcId, deviceName, deviceAction });
-        
+        const logTimestamp = new Date().toISOString();
         db.run(
-            'INSERT INTO usb_logs (pc_id, device_name, action) VALUES (?, ?, ?)',
-            [pcId, deviceName, deviceAction],
+            'INSERT INTO usb_logs (pc_id, device_name, action, timestamp) VALUES (?, ?, ?, ?)',
+            [pcId, device_name, action, logTimestamp],
             function(err) {
                 if (err) {
                     console.error('Error inserting USB log:', err);
                     return res.status(500).json({ error: 'Failed to insert USB log' });
                 }
-                console.log('Successfully inserted USB log with ID:', this.lastID);
+                // Fetch details for notification
+                db.get(
+                    `SELECT ul.id, ul.timestamp, p.pc_name, ul.device_name, ul.action, ul.pc_id
+                     FROM usb_logs ul
+                     JOIN pcs p ON ul.pc_id = p.id
+                     WHERE ul.id = ?`,
+                    [this.lastID],
+                    (err, row) => {
+                        if (!err && row) {
+                            broadcastNotification({
+                                type: 'usb_log',
+                                logId: row.id,
+                                pcId: row.pc_id,
+                                pcName: row.pc_name,
+                                deviceName: row.device_name,
+                                action: row.action,
+                                timestamp: row.timestamp
+                            });
+                        }
+                    }
+                );
                 res.status(201).json({ id: this.lastID });
             }
         );
@@ -271,17 +296,37 @@ app.post('/logs/clipboard', async (req, res) => {
     if (!pc || !content) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
-
     try {
         const pcId = await getOrCreatePC(pc);
+        const logTimestamp = new Date().toISOString();
         db.run(
-            'INSERT INTO clipboard_logs (pc_id, content) VALUES (?, ?)',
-            [pcId, content],
+            'INSERT INTO clipboard_logs (pc_id, content, timestamp) VALUES (?, ?, ?)',
+            [pcId, content, logTimestamp],
             function(err) {
                 if (err) {
                     console.error('Error inserting clipboard log:', err);
                     return res.status(500).json({ error: 'Failed to insert clipboard log' });
                 }
+                // Fetch details for notification
+                db.get(
+                    `SELECT cl.id, cl.timestamp, p.pc_name, cl.content, cl.pc_id
+                     FROM clipboard_logs cl
+                     JOIN pcs p ON cl.pc_id = p.id
+                     WHERE cl.id = ?`,
+                    [this.lastID],
+                    (err, row) => {
+                        if (!err && row) {
+                            broadcastNotification({
+                                type: 'clipboard_log',
+                                logId: row.id,
+                                pcId: row.pc_id,
+                                pcName: row.pc_name,
+                                content: row.content,
+                                timestamp: row.timestamp
+                            });
+                        }
+                    }
+                );
                 res.status(201).json({ id: this.lastID });
             }
         );
@@ -326,15 +371,37 @@ app.post('/logs/processes', async (req, res) => {
         // Convert ISO string dates to SQLite format if needed
         const startTime = start_time ? new Date(start_time).toISOString() : null;
         const endTime = end_time ? new Date(end_time).toISOString() : null;
+        const logTimestamp = new Date().toISOString();
 
         db.run(
-            'INSERT INTO processes_logs (pc_id, application_id, action, start_time, end_time) VALUES (?, ?, ?, ?, ?)',
-            [pcId, applicationId, action, startTime, endTime],
+            'INSERT INTO processes_logs (pc_id, application_id, action, start_time, end_time, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
+            [pcId, applicationId, action, startTime, endTime, logTimestamp],
             function(err) {
                 if (err) {
                     console.error('Error inserting process log:', err);
                     return res.status(500).json({ error: 'Failed to insert process log' });
                 }
+                // Fetch details for notification
+                db.get(
+                    `SELECT pl.id, pl.timestamp, p.pc_name, a.display_name, pl.pc_id
+                     FROM processes_logs pl
+                     JOIN pcs p ON pl.pc_id = p.id
+                     JOIN applications a ON pl.application_id = a.id
+                     WHERE pl.id = ?`,
+                    [this.lastID],
+                    (err, row) => {
+                        if (!err && row) {
+                            broadcastNotification({
+                                type: 'process_log',
+                                logId: row.id,
+                                pcId: row.pc_id,
+                                pcName: row.pc_name,
+                                appName: row.display_name,
+                                timestamp: row.timestamp
+                            });
+                        }
+                    }
+                );
                 res.status(201).json({ id: this.lastID });
             }
         );
@@ -394,16 +461,14 @@ app.get('/logs/process', (req, res) => {
 
 // API to insert download logs
 app.post('/logs/downloads', async (req, res) => {
-    const { pc, file_name, file_type, content, timestamp } = req.body;
+    const { pc, file_name, file_type, content } = req.body;
     if (!pc || !file_name || !file_type) {
         return res.status(400).json({ error: 'Missing required fields' });
     }
 
     try {
         const pcId = await getOrCreatePC(pc);
-        // Convert timestamp to SQLite format if provided
-        const logTimestamp = timestamp ? new Date(timestamp).toISOString() : new Date().toISOString();
-        
+        const logTimestamp = new Date().toISOString();
         db.run(
             'INSERT INTO downloads_logs (pc_id, file_name, file_type, content, timestamp) VALUES (?, ?, ?, ?, ?)',
             [pcId, file_name, file_type, content || null, logTimestamp],
@@ -412,6 +477,27 @@ app.post('/logs/downloads', async (req, res) => {
                     console.error('Error inserting download log:', err);
                     return res.status(500).json({ error: 'Failed to insert download log' });
                 }
+                // Fetch details for notification
+                db.get(
+                    `SELECT dl.id, dl.timestamp, p.pc_name, dl.file_name, dl.file_type, dl.pc_id
+                     FROM downloads_logs dl
+                     JOIN pcs p ON dl.pc_id = p.id
+                     WHERE dl.id = ?`,
+                    [this.lastID],
+                    (err, row) => {
+                        if (!err && row) {
+                            broadcastNotification({
+                                type: 'download_log',
+                                logId: row.id,
+                                pcId: row.pc_id,
+                                pcName: row.pc_name,
+                                fileName: row.file_name,
+                                fileType: row.file_type,
+                                timestamp: row.timestamp
+                            });
+                        }
+                    }
+                );
                 res.status(201).json({ id: this.lastID });
             }
         );
@@ -732,6 +818,11 @@ app.get('/classrooms/:id/pcs', (req, res) => {
 // Endpoint to get statistics for a classroom
 app.get('/classrooms/:id/stats', async (req, res) => {
     const classroomId = req.params.id;
+    const { start_time, end_time } = req.query;
+    let timeFilter = '';
+    if (start_time && end_time) {
+        timeFilter = `AND pl.timestamp BETWEEN '${start_time}' AND '${end_time}'`;
+    }
     try {
         // Number of PCs assigned
         const pcs = await new Promise((resolve, reject) => {
@@ -744,26 +835,49 @@ app.get('/classrooms/:id/stats', async (req, res) => {
         const numOnline = pcs.filter(pc => pc.is_connected).length;
         const numOffline = numPCs - numOnline;
 
-        // Most recent activity (from all log tables)
-        const recentActivity = await new Promise((resolve, reject) => {
-            db.get(`
-                SELECT MAX(ts) as last_activity FROM (
-                    SELECT MAX(timestamp) as ts FROM processes_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
-                    UNION ALL
-                    SELECT MAX(timestamp) FROM usb_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
-                    UNION ALL
-                    SELECT MAX(timestamp) FROM clipboard_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
-                    UNION ALL
-                    SELECT MAX(timestamp) FROM downloads_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
-                )
-            `, [], (err, row) => {
-                if (err) reject(err); else resolve(row.last_activity);
+        // Most recent activity (from all log tables, filtered by time)
+        let recentActivity = null;
+        if (start_time && end_time) {
+            recentActivity = await new Promise((resolve, reject) => {
+                db.get(`
+                    SELECT MAX(ts) as last_activity FROM (
+                        SELECT MAX(timestamp) as ts FROM processes_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'}) AND timestamp BETWEEN '${start_time}' AND '${end_time}'
+                        UNION ALL
+                        SELECT MAX(timestamp) FROM usb_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'}) AND timestamp BETWEEN '${start_time}' AND '${end_time}'
+                        UNION ALL
+                        SELECT MAX(timestamp) FROM clipboard_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'}) AND timestamp BETWEEN '${start_time}' AND '${end_time}'
+                        UNION ALL
+                        SELECT MAX(timestamp) FROM downloads_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'}) AND timestamp BETWEEN '${start_time}' AND '${end_time}'
+                    )
+                `, [], (err, row) => {
+                    if (err) reject(err); else resolve(row.last_activity);
+                });
             });
-        });
+        } else {
+            recentActivity = await new Promise((resolve, reject) => {
+                db.get(`
+                    SELECT MAX(ts) as last_activity FROM (
+                        SELECT MAX(timestamp) as ts FROM processes_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
+                        UNION ALL
+                        SELECT MAX(timestamp) FROM usb_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
+                        UNION ALL
+                        SELECT MAX(timestamp) FROM clipboard_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
+                        UNION ALL
+                        SELECT MAX(timestamp) FROM downloads_logs WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
+                    )
+                `, [], (err, row) => {
+                    if (err) reject(err); else resolve(row.last_activity);
+                });
+            });
+        }
 
-        // Number of logs per type
+        // Helper for count queries with time filter
         const countTable = async (table) => new Promise((resolve, reject) => {
-            db.get(`SELECT COUNT(*) as count FROM ${table} WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})`, [], (err, row) => {
+            let query = `SELECT COUNT(*) as count FROM ${table} WHERE pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})`;
+            if (start_time && end_time) {
+                query += ` AND timestamp BETWEEN '${start_time}' AND '${end_time}'`;
+            }
+            db.get(query, [], (err, row) => {
                 if (err) reject(err); else resolve(row.count);
             });
         });
@@ -772,29 +886,34 @@ app.get('/classrooms/:id/stats', async (req, res) => {
         const numClipboardLogs = await countTable('clipboard_logs');
         const numDownloadLogs = await countTable('downloads_logs');
 
-        // Most common applications
-        const mostCommonApps = await new Promise((resolve, reject) => {
-            db.all(`
-                SELECT a.display_name, a.name, COUNT(*) as count
+        // Unique applications launched (name and display_name only, from processes_logs)
+        const blacklistedAppsLaunched = await new Promise((resolve, reject) => {
+            let query = `
+                SELECT DISTINCT a.display_name, a.name
                 FROM processes_logs pl
                 JOIN applications a ON pl.application_id = a.id
                 WHERE pl.pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
-                GROUP BY pl.application_id
-                ORDER BY count DESC
-                LIMIT 5
-            `, [], (err, rows) => {
+            `;
+            if (start_time && end_time) {
+                query += ` AND pl.timestamp BETWEEN '${start_time}' AND '${end_time}'`;
+            }
+            db.all(query, [], (err, rows) => {
                 if (err) reject(err); else resolve(rows);
             });
         });
+        const numUniqueBlacklistedAppsLaunched = blacklistedAppsLaunched.length;
 
-        // Number of blacklisted app launches
+        // Number of app launches (total launches, not unique)
         const numBlacklistedAppLaunches = await new Promise((resolve, reject) => {
-            db.get(`
+            let query = `
                 SELECT COUNT(*) as count
                 FROM processes_logs pl
-                JOIN application_lists al ON pl.application_id = al.application_id AND al.list_type = 'blacklist'
                 WHERE pl.pc_id IN (${pcIds.length ? pcIds.join(',') : 'NULL'})
-            `, [], (err, row) => {
+            `;
+            if (start_time && end_time) {
+                query += ` AND pl.timestamp BETWEEN '${start_time}' AND '${end_time}'`;
+            }
+            db.get(query, [], (err, row) => {
                 if (err) reject(err); else resolve(row.count);
             });
         });
@@ -807,7 +926,8 @@ app.get('/classrooms/:id/stats', async (req, res) => {
             numUSBLogs,
             numClipboardLogs,
             numDownloadLogs,
-            mostCommonApps,
+            blacklistedAppsLaunched,
+            numUniqueBlacklistedAppsLaunched,
             recentActivity,
             numBlacklistedAppLaunches
         });
@@ -820,14 +940,20 @@ app.get('/classrooms/:id/stats', async (req, res) => {
 // Endpoint to get all process logs for a specific PC
 app.get('/pcs/:id/process-logs', (req, res) => {
     const pcId = req.params.id;
-    const query = `
+    const { start_time, end_time } = req.query;
+    let query = `
         SELECT pl.*, a.name as application_name, a.display_name as application_display_name
         FROM processes_logs pl
         JOIN applications a ON pl.application_id = a.id
         WHERE pl.pc_id = ?
-        ORDER BY pl.timestamp DESC
     `;
-    db.all(query, [pcId], (err, rows) => {
+    const params = [pcId];
+    if (start_time && end_time) {
+        query += ` AND pl.timestamp BETWEEN ? AND ?`;
+        params.push(start_time, end_time);
+    }
+    query += ` ORDER BY pl.timestamp DESC`;
+    db.all(query, params, (err, rows) => {
         if (err) {
             console.error('Error fetching process logs for PC:', err);
             return res.status(500).json({ error: 'Failed to fetch process logs for PC' });
@@ -839,10 +965,15 @@ app.get('/pcs/:id/process-logs', (req, res) => {
 // Endpoint to get all USB logs for a specific PC
 app.get('/pcs/:id/usb-logs', (req, res) => {
     const pcId = req.params.id;
-    const query = `
-        SELECT * FROM usb_logs WHERE pc_id = ? ORDER BY timestamp DESC
-    `;
-    db.all(query, [pcId], (err, rows) => {
+    const { start_time, end_time } = req.query;
+    let query = `SELECT * FROM usb_logs WHERE pc_id = ?`;
+    const params = [pcId];
+    if (start_time && end_time) {
+        query += ` AND timestamp BETWEEN ? AND ?`;
+        params.push(start_time, end_time);
+    }
+    query += ` ORDER BY timestamp DESC`;
+    db.all(query, params, (err, rows) => {
         if (err) {
             console.error('Error fetching USB logs for PC:', err);
             return res.status(500).json({ error: 'Failed to fetch USB logs for PC' });
@@ -854,10 +985,15 @@ app.get('/pcs/:id/usb-logs', (req, res) => {
 // Endpoint to get all clipboard logs for a specific PC
 app.get('/pcs/:id/clipboard-logs', (req, res) => {
     const pcId = req.params.id;
-    const query = `
-        SELECT * FROM clipboard_logs WHERE pc_id = ? ORDER BY timestamp DESC
-    `;
-    db.all(query, [pcId], (err, rows) => {
+    const { start_time, end_time } = req.query;
+    let query = `SELECT * FROM clipboard_logs WHERE pc_id = ?`;
+    const params = [pcId];
+    if (start_time && end_time) {
+        query += ` AND timestamp BETWEEN ? AND ?`;
+        params.push(start_time, end_time);
+    }
+    query += ` ORDER BY timestamp DESC`;
+    db.all(query, params, (err, rows) => {
         if (err) {
             console.error('Error fetching clipboard logs for PC:', err);
             return res.status(500).json({ error: 'Failed to fetch clipboard logs for PC' });
@@ -869,10 +1005,15 @@ app.get('/pcs/:id/clipboard-logs', (req, res) => {
 // Endpoint to get all download logs for a specific PC
 app.get('/pcs/:id/download-logs', (req, res) => {
     const pcId = req.params.id;
-    const query = `
-        SELECT * FROM downloads_logs WHERE pc_id = ? ORDER BY timestamp DESC
-    `;
-    db.all(query, [pcId], (err, rows) => {
+    const { start_time, end_time } = req.query;
+    let query = `SELECT * FROM downloads_logs WHERE pc_id = ?`;
+    const params = [pcId];
+    if (start_time && end_time) {
+        query += ` AND timestamp BETWEEN ? AND ?`;
+        params.push(start_time, end_time);
+    }
+    query += ` ORDER BY timestamp DESC`;
+    db.all(query, params, (err, rows) => {
         if (err) {
             console.error('Error fetching download logs for PC:', err);
             return res.status(500).json({ error: 'Failed to fetch download logs for PC' });
@@ -881,7 +1022,42 @@ app.get('/pcs/:id/download-logs', (req, res) => {
     });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Endpoint to get all USB logs (for all PCs)
+app.get('/logs/usb', (req, res) => {
+    db.all('SELECT * FROM usb_logs ORDER BY timestamp DESC', [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Failed to fetch USB logs' });
+        res.json(rows);
+    });
+});
+
+// Endpoint to get all clipboard logs (for all PCs)
+app.get('/logs/clipboard', (req, res) => {
+    db.all('SELECT * FROM clipboard_logs ORDER BY timestamp DESC', [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Failed to fetch clipboard logs' });
+        res.json(rows);
+    });
+});
+
+// Endpoint to get all download logs (for all PCs)
+app.get('/logs/downloads', (req, res) => {
+    db.all('SELECT * FROM downloads_logs ORDER BY timestamp DESC', [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Failed to fetch download logs' });
+        res.json(rows);
+    });
+});
+
+// Start server (use http server for ws)
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
+
+function broadcastNotification(notification) {
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(notification));
+        }
+    });
+}
+
+server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });

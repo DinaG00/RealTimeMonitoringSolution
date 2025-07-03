@@ -171,6 +171,7 @@ CREATE TABLE application_lists (
     UNIQUE(application_id, list_type)
 );
 
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_processes_logs_application ON processes_logs(application_id);
 CREATE INDEX IF NOT EXISTS idx_processes_logs_pc ON processes_logs(pc_id);
@@ -178,4 +179,23 @@ CREATE INDEX IF NOT EXISTS idx_application_lists_application ON application_list
 CREATE INDEX IF NOT EXISTS idx_applications_name ON applications(name);
 CREATE INDEX IF NOT EXISTS idx_usb_logs_pc ON usb_logs(pc_id);
 CREATE INDEX IF NOT EXISTS idx_clipboard_logs_pc ON clipboard_logs(pc_id);
-CREATE INDEX IF NOT EXISTS idx_downloads_logs_pc ON downloads_logs(pc_id); 
+CREATE INDEX IF NOT EXISTS idx_downloads_logs_pc ON downloads_logs(pc_id);
+
+-- New query to show unique blacklisted apps launched
+SELECT DISTINCT a.display_name, a.name
+FROM processes_logs pl
+JOIN applications a ON pl.application_id = a.id
+WHERE pl.pc_id IN (...) 
+
+-- For processes_logs
+UPDATE processes_logs
+SET timestamp = strftime('%Y-%m-%dT%H:%M:%S.000Z', timestamp) WHERE instr(timestamp, 'T') = 0; 
+
+-- For usb_logs
+UPDATE usb_logs SET timestamp = strftime('%Y-%m-%dT%H:%M:%S.000Z', timestamp) WHERE instr(timestamp, 'T') = 0; 
+
+-- For clipboard_logs
+UPDATE clipboard_logs SET timestamp = strftime('%Y-%m-%dT%H:%M:%S.000Z', timestamp) WHERE instr(timestamp, 'T') = 0; 
+
+-- For downloads_logs
+UPDATE downloads_logs SET timestamp = strftime('%Y-%m-%dT%H:%M:%S.000Z', timestamp) WHERE instr(timestamp, 'T') = 0; 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Box,
     Typography,
@@ -53,6 +53,30 @@ import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
+// Helper: Convert local datetime-local string to UTC ISO string
+function toUTCISOString(localDateTimeString) {
+    if (!localDateTimeString) return '';
+    const localDate = new Date(localDateTimeString);
+    return localDate.toISOString();
+}
+
+// Helper: Convert UTC string to Romanian local time string
+function toRomanianLocaleString(timestamp) {
+    if (!timestamp) return '';
+    // If timestamp is 'YYYY-MM-DD HH:MM:SS', treat as Romanian local time
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(timestamp)) {
+        // Parse as local time (Romanian)
+        const [date, time] = timestamp.split(' ');
+        const [year, month, day] = date.split('-').map(Number);
+        const [hour, minute, second] = time.split(':').map(Number);
+        // Create a Date object in local time
+        const localDate = new Date(year, month - 1, day, hour, minute, second);
+        return localDate.toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
+    }
+    // Otherwise, treat as ISO string (UTC)
+    return new Date(timestamp).toLocaleString('ro-RO', { timeZone: 'Europe/Bucharest' });
+}
+
 const PCManagement = () => {
     const [currentTab, setCurrentTab] = useState(0);
     const [classrooms, setClassrooms] = useState([]);
@@ -79,6 +103,16 @@ const PCManagement = () => {
     const [pcLogs, setPcLogs] = useState({ process: [], usb: [], clipboard: [], download: [] });
     const [logsTab, setLogsTab] = useState(0);
     const [loadingPcLogs, setLoadingPcLogs] = useState(false);
+    const [startTime, setStartTime] = useState('');
+    const [endTime, setEndTime] = useState('');
+    const [examMode, setExamMode] = useState(false);
+    const [examPeriod, setExamPeriod] = useState({ start: '', end: '' });
+    const [notifications, setNotifications] = useState([]);
+    const [showNotification, setShowNotification] = useState(false);
+    const [latestNotification, setLatestNotification] = useState(null);
+    const wsRef = useRef(null);
+    const [highlightedPCs, setHighlightedPCs] = useState([]);
+    const [notificationTab, setNotificationTab] = useState(0);
 
     useEffect(() => {
         const initializeData = async () => {
@@ -131,10 +165,25 @@ const PCManagement = () => {
         }
     };
 
+    const getFilterPeriod = () => {
+        if (examMode && examPeriod.start && examPeriod.end) {
+            return { start: toUTCISOString(examPeriod.start), end: toUTCISOString(examPeriod.end) };
+        }
+        if (startTime && endTime) {
+            return { start: toUTCISOString(startTime), end: toUTCISOString(endTime) };
+        }
+        return { start: '', end: '' };
+    };
+
     const fetchClassroomStats = async (classroomId) => {
         setLoadingStats(true);
         try {
-            const response = await fetch(`http://localhost:5001/classrooms/${classroomId}/stats`);
+            const { start, end } = getFilterPeriod();
+            let url = `http://localhost:5001/classrooms/${classroomId}/stats`;
+            if (start && end) {
+                url += `?start_time=${encodeURIComponent(start)}&end_time=${encodeURIComponent(end)}`;
+            }
+            const response = await fetch(url);
             if (response.ok) {
                 const data = await response.json();
                 setClassroomStats(data);
@@ -156,7 +205,7 @@ const PCManagement = () => {
         setSelectedClassroom(classroom);
         if (classroom) {
             setLoadingClassroomPCs(true);
-            fetchClassroomStats(classroom.id);
+            await fetchClassroomStats(classroom.id);
             try {
                 const response = await fetch(`http://localhost:5001/classrooms/${classroom.id}/pcs`);
                 if (response.ok) {
@@ -386,11 +435,22 @@ const PCManagement = () => {
         setPcLogsDialog({ open: true, pc });
         setLoadingPcLogs(true);
         try {
+            let processUrl = `http://localhost:5001/pcs/${pc.id}/process-logs`;
+            let usbUrl = `http://localhost:5001/pcs/${pc.id}/usb-logs`;
+            let clipboardUrl = `http://localhost:5001/pcs/${pc.id}/clipboard-logs`;
+            let downloadUrl = `http://localhost:5001/pcs/${pc.id}/download-logs`;
+            if (examMode && examPeriod.start && examPeriod.end) {
+                const params = `?start_time=${encodeURIComponent(examPeriod.start)}&end_time=${encodeURIComponent(examPeriod.end)}`;
+                processUrl += params;
+                usbUrl += params;
+                clipboardUrl += params;
+                downloadUrl += params;
+            }
             const [processRes, usbRes, clipboardRes, downloadRes] = await Promise.all([
-                fetch(`http://localhost:5001/pcs/${pc.id}/process-logs`),
-                fetch(`http://localhost:5001/pcs/${pc.id}/usb-logs`),
-                fetch(`http://localhost:5001/pcs/${pc.id}/clipboard-logs`),
-                fetch(`http://localhost:5001/pcs/${pc.id}/download-logs`)
+                fetch(processUrl),
+                fetch(usbUrl),
+                fetch(clipboardUrl),
+                fetch(downloadUrl)
             ]);
             const [process, usb, clipboard, download] = await Promise.all([
                 processRes.ok ? processRes.json() : [],
@@ -429,13 +489,26 @@ const PCManagement = () => {
                 </TableHead>
                 <TableBody>
                     {pcs.map((pc) => (
-                        <TableRow key={pc.id} hover style={{ cursor: 'pointer' }} onClick={() => handlePcRowClick(pc)}>
+                        <TableRow
+                            key={pc.id}
+                            hover
+                            style={{
+                                cursor: 'pointer',
+                                backgroundColor: highlightedPCs.includes(pc.id) ? '#fff9c4' : undefined // yellow highlight
+                            }}
+                            onClick={() => handlePcRowClick(pc)}
+                        >
                             <TableCell>{pc.pc_name}</TableCell>
-                            <TableCell>{renderPCStatus(pc)}</TableCell>
+                            <TableCell>
+                                {notifications.some(n => n.pcId === pc.id) && (
+                                    <WarningIcon color="error" sx={{ mr: 1 }} />
+                                )}
+                                {renderPCStatus(pc)}
+                            </TableCell>
                             <TableCell>{renderClassroomSelect(pc)}</TableCell>
                             <TableCell>
                                 {pc.last_connection 
-                                    ? new Date(pc.last_connection).toLocaleString()
+                                    ? toRomanianLocaleString(pc.last_connection)
                                     : 'Never'}
                             </TableCell>
                         </TableRow>
@@ -443,6 +516,79 @@ const PCManagement = () => {
                 </TableBody>
             </Table>
         </TableContainer>
+    );
+
+    useEffect(() => {
+        if (selectedClassroom) {
+            fetchClassroomStats(selectedClassroom.id);
+        }
+        // eslint-disable-next-line
+    }, [startTime, endTime, examMode, examPeriod]);
+
+    const closeNotification = (notif) => {
+        setShowNotification(false);
+        setHighlightedPCs(prev => prev.filter(id => id !== notif.pcId));
+    };
+
+    useEffect(() => {
+        if (!examMode || !selectedClassroom) return;
+        // Connect to WebSocket server
+        const ws = new window.WebSocket('ws://localhost:5001');
+        wsRef.current = ws;
+        ws.onmessage = (event) => {
+            const notif = JSON.parse(event.data);
+            const supportedTypes = ['process_log', 'usb_log', 'clipboard_log', 'download_log'];
+            if (
+                supportedTypes.includes(notif.type) &&
+                classroomPCs.some(pc => pc.id === notif.pcId) &&
+                notif.timestamp >= examPeriod.start && notif.timestamp <= examPeriod.end &&
+                !notifications.some(n => n.logId === notif.logId)
+            ) {
+                setNotifications(prev => [...prev, notif]);
+                setLatestNotification(notif);
+                setShowNotification(true);
+                setHighlightedPCs(prev => Array.from(new Set([...prev, notif.pcId])));
+                if (pcLogsDialog.open && pcLogsDialog.pc && pcLogsDialog.pc.id === notif.pcId) {
+                    handlePcRowClick(pcLogsDialog.pc);
+                }
+            }
+        };
+        ws.onclose = () => { wsRef.current = null; };
+        return () => { ws.close(); };
+        // eslint-disable-next-line
+    }, [examMode, examPeriod, selectedClassroom, classroomPCs, notifications, pcLogsDialog]);
+
+    const renderNotificationHistory = () => (
+        <Box sx={{ mt: 2 }}>
+            <Typography variant="h6" gutterBottom>Notification History</Typography>
+            {notifications.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">No notifications yet.</Typography>
+            ) : (
+                <List>
+                    {notifications.map((notif, idx) => (
+                        <ListItem key={notif.logId || idx} alignItems="flex-start" sx={{ bgcolor: highlightedPCs.includes(notif.pcId) ? '#fff9c4' : undefined }}>
+                            <ListItemText
+                                primary={`[${notif.type.replace('_log', '').toUpperCase()}] ${notif.pcName} (${notif.pcId})`}
+                                secondary={
+                                    <>
+                                        <span>{notif.timestamp ? toRomanianLocaleString(notif.timestamp) : ''}</span><br/>
+                                        {notif.appName && <span>App: {notif.appName}<br/></span>}
+                                        {notif.deviceName && <span>Device: {notif.deviceName}<br/></span>}
+                                        {notif.action && <span>Action: {notif.action}<br/></span>}
+                                        {notif.content && <span>Clipboard: {notif.content}<br/></span>}
+                                        {notif.fileName && <span>File: {notif.fileName}<br/></span>}
+                                        {notif.fileType && <span>Type: {notif.fileType}<br/></span>}
+                                    </>
+                                }
+                            />
+                            <ListItemSecondaryAction>
+                                <Button size="small" color="primary" onClick={() => closeNotification(notif)}>Dismiss</Button>
+                            </ListItemSecondaryAction>
+                        </ListItem>
+                    ))}
+                </List>
+            )}
+        </Box>
     );
 
     if (loading) {
@@ -486,6 +632,50 @@ const PCManagement = () => {
                 )}
             </Box>
             {selectedClassroom && (
+                <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <label>Start Time:</label>
+                    <input
+                        type="datetime-local"
+                        value={startTime}
+                        onChange={e => setStartTime(e.target.value)}
+                        disabled={examMode}
+                    />
+                    <label>End Time:</label>
+                    <input
+                        type="datetime-local"
+                        value={endTime}
+                        onChange={e => setEndTime(e.target.value)}
+                        disabled={examMode}
+                    />
+                    <Button
+                        variant="contained"
+                        color="success"
+                        onClick={() => {
+                            if (startTime && endTime) {
+                                setExamPeriod({ start: toUTCISOString(startTime), end: toUTCISOString(endTime) });
+                                setExamMode(true);
+                            }
+                        }}
+                        disabled={examMode || !startTime || !endTime}
+                    >
+                        Start Exam
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        onClick={() => {
+                            setStartTime('');
+                            setEndTime('');
+                            setExamMode(false);
+                            setExamPeriod({ start: '', end: '' });
+                            setNotifications([]);
+                        }}
+                        sx={{ ml: 2 }}
+                    >
+                        Clear
+                    </Button>
+                </Box>
+            )}
+            {selectedClassroom && (
                 <Box sx={{ my: 2 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                         <Typography variant="h6" gutterBottom sx={{ flexGrow: 1 }}>
@@ -495,7 +685,12 @@ const PCManagement = () => {
                             variant="outlined"
                             size="small"
                             startIcon={showStats ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                            onClick={() => setShowStats((prev) => !prev)}
+                            onClick={async () => {
+                                setShowStats((prev) => !prev);
+                                if (!showStats && selectedClassroom) {
+                                    await fetchClassroomStats(selectedClassroom.id);
+                                }
+                            }}
                             sx={{ ml: 2 }}
                         >
                             {showStats ? 'Hide Statistics' : 'Show Statistics'}
@@ -548,9 +743,15 @@ const PCManagement = () => {
                             </Grid>
                             <Grid item xs={12} sm={6} md={3}>
                                 <Card>
-                                    <CardHeader avatar={<WarningIcon color="error" />} title="Blacklisted App Launches" />
+                                    <CardHeader avatar={<WarningIcon color="error" />} title="Blacklisted Apps Launched" />
                                     <CardContent>
-                                        <Typography variant="h5">{classroomStats.numBlacklistedAppLaunches}</Typography>
+                                        {classroomStats.blacklistedAppsLaunched && classroomStats.blacklistedAppsLaunched.length > 0 ? (
+                                            <Typography variant="body1">
+                                                {classroomStats.blacklistedAppsLaunched.map(app => app.display_name).join(', ')}
+                                            </Typography>
+                                        ) : (
+                                            <Typography variant="body2" color="text.secondary">No blacklisted app launches</Typography>
+                                        )}
                                     </CardContent>
                                 </Card>
                             </Grid>
@@ -559,29 +760,8 @@ const PCManagement = () => {
                                     <CardHeader avatar={<AccessTimeIcon color="primary" />} title="Most Recent Activity" />
                                     <CardContent>
                                         <Typography variant="h6">
-                                            {classroomStats.recentActivity ? new Date(classroomStats.recentActivity).toLocaleString() : 'N/A'}
+                                            {classroomStats.recentActivity ? toRomanianLocaleString(classroomStats.recentActivity) : 'N/A'}
                                         </Typography>
-                                    </CardContent>
-                                </Card>
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                                <Card>
-                                    <CardHeader avatar={<AppsIcon color="primary" />} title="Top Applications" />
-                                    <CardContent>
-                                        {classroomStats.mostCommonApps && classroomStats.mostCommonApps.length > 0 ? (
-                                            <List dense>
-                                                {classroomStats.mostCommonApps.map((app, idx) => (
-                                                    <ListItem key={app.name}>
-                                                        <ListItemText
-                                                            primary={`${idx + 1}. ${app.display_name} (${app.name})`}
-                                                            secondary={`Launched ${app.count} times`}
-                                                        />
-                                                    </ListItem>
-                                                ))}
-                                            </List>
-                                        ) : (
-                                            <Typography variant="body2" color="text.secondary">No data</Typography>
-                                        )}
                                     </CardContent>
                                 </Card>
                             </Grid>
@@ -595,10 +775,20 @@ const PCManagement = () => {
                 </Box>
             )}
             <Divider sx={{ my: 2 }} />
-            <Typography variant="h6" gutterBottom>
-                Unassigned PCs
-            </Typography>
-            {renderPCList(getUnassignedPCs())}
+            <Tabs value={notificationTab} onChange={(_, v) => setNotificationTab(v)} sx={{ mb: 2 }}>
+                <Tab label="PCs" />
+                <Tab label="Notification History" />
+            </Tabs>
+            {notificationTab === 0 ? (
+                <>
+                    <Typography variant="h6" gutterBottom>
+                        Unassigned PCs
+                    </Typography>
+                    {renderPCList(getUnassignedPCs())}
+                </>
+            ) : (
+                renderNotificationHistory()
+            )}
             {/* Add Classroom Dialog */}
             <Dialog open={addDialogOpen} onClose={handleAddClassroomClose}>
                 <DialogTitle>Add Classroom</DialogTitle>
@@ -663,7 +853,7 @@ const PCManagement = () => {
                                         <TableBody>
                                             {pcLogs.process.map((log) => (
                                                 <TableRow key={log.id}>
-                                                    <TableCell>{log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</TableCell>
+                                                    <TableCell>{log.timestamp ? toRomanianLocaleString(log.timestamp) : ''}</TableCell>
                                                     <TableCell>{log.application_display_name} ({log.application_name})</TableCell>
                                                     <TableCell>{log.action}</TableCell>
                                                     <TableCell>{log.window_title}</TableCell>
@@ -689,7 +879,7 @@ const PCManagement = () => {
                                         <TableBody>
                                             {pcLogs.usb.map((log) => (
                                                 <TableRow key={log.id}>
-                                                    <TableCell>{log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</TableCell>
+                                                    <TableCell>{log.timestamp ? toRomanianLocaleString(log.timestamp) : ''}</TableCell>
                                                     <TableCell>{log.device_name}</TableCell>
                                                     <TableCell>{log.action}</TableCell>
                                                 </TableRow>
@@ -713,7 +903,7 @@ const PCManagement = () => {
                                         <TableBody>
                                             {pcLogs.clipboard.map((log) => (
                                                 <TableRow key={log.id}>
-                                                    <TableCell>{log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</TableCell>
+                                                    <TableCell>{log.timestamp ? toRomanianLocaleString(log.timestamp) : ''}</TableCell>
                                                     <TableCell>{log.content}</TableCell>
                                                 </TableRow>
                                             ))}
@@ -738,7 +928,7 @@ const PCManagement = () => {
                                         <TableBody>
                                             {pcLogs.download.map((log) => (
                                                 <TableRow key={log.id}>
-                                                    <TableCell>{log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</TableCell>
+                                                    <TableCell>{log.timestamp ? toRomanianLocaleString(log.timestamp) : ''}</TableCell>
                                                     <TableCell>{log.file_name}</TableCell>
                                                     <TableCell>{log.file_type}</TableCell>
                                                     <TableCell>{log.content}</TableCell>
@@ -772,6 +962,36 @@ const PCManagement = () => {
                     {snackbar.message}
                 </Alert>
             </Snackbar>
+            {showNotification && latestNotification && (
+                <Snackbar
+                    open={showNotification}
+                    anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+                    onClose={() => closeNotification(latestNotification)}
+                    autoHideDuration={null}
+                    message={
+                        <span>
+                            <b>New {latestNotification.type.replace('_log', '').toUpperCase()} log</b> for <b>{latestNotification.pcName}</b>
+                            {latestNotification.appName && <>: {latestNotification.appName}</>}
+                            {latestNotification.deviceName && <>: {latestNotification.deviceName}</>}
+                            {latestNotification.action && <> ({latestNotification.action})</>}
+                            {latestNotification.content && <>: {latestNotification.content}</>}
+                            {latestNotification.fileName && <>: {latestNotification.fileName}</>}
+                        </span>
+                    }
+                    action={
+                        <Button color="inherit" size="small" onClick={() => closeNotification(latestNotification)}>
+                            Close
+                        </Button>
+                    }
+                />
+            )}
+            {examMode && examPeriod.start && examPeriod.end && (
+                <Box sx={{ mb: 2 }}>
+                    <Alert severity="info">
+                        Exam period: {toRomanianLocaleString(examPeriod.start)} - {toRomanianLocaleString(examPeriod.end)}
+                    </Alert>
+                </Box>
+            )}
         </Box>
     );
 };

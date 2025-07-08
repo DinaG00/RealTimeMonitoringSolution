@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading;
 using Newtonsoft.Json;
+using System.Configuration;
 
 namespace MonitoringService
 {
@@ -16,6 +17,7 @@ namespace MonitoringService
         private ProcessMonitor _processMonitor;
         private DownloadsMonitor _downloadsMonitor;
         private Timer _heartbeatTimer;
+        private readonly string backendBaseUrl = ConfigurationManager.AppSettings["BackendBaseUrl"];
 
         public Service1()
         {
@@ -88,7 +90,7 @@ namespace MonitoringService
                     var json = JsonConvert.SerializeObject(payload);
                     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                    var response = await client.PostAsync("http://localhost:5001/pcs/heartbeat", content);
+                    var response = await client.PostAsync($"{backendBaseUrl}/pcs/heartbeat", content);
                     if (!response.IsSuccessStatusCode)
                     {
                         EventLog.WriteEntry("DetectionService", $"Failed to send heartbeat: {response.StatusCode}");

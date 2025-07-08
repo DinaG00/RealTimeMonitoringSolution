@@ -6,7 +6,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 using System.Linq;
-using Newtonsoft.Json; 
+using Newtonsoft.Json;
+using System.Configuration;
 
 namespace MonitoringService
 {
@@ -17,6 +18,7 @@ namespace MonitoringService
         private static HashSet<string> _blacklistedApplications = new HashSet<string>();
         private static DateTime _lastBlacklistFetch = DateTime.MinValue;
         private static readonly TimeSpan _blacklistRefreshInterval = TimeSpan.FromMinutes(5);
+        private static readonly string backendBaseUrl = ConfigurationManager.AppSettings["BackendBaseUrl"];
 
         static ApiLogger()
         {
@@ -48,7 +50,7 @@ namespace MonitoringService
             try
             {
                 EventLog.WriteEntry("ApiLogger", "Fetching blacklist from server...", EventLogEntryType.Information);
-                var response = await client.GetAsync("http://localhost:5001/application-lists/blacklist");
+                var response = await client.GetAsync($"{backendBaseUrl}/application-lists/blacklist");
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -135,16 +137,16 @@ namespace MonitoringService
             switch (type)
             {
                 case "USB":
-                    return "http://localhost:5001/logs/usb";
+                    return $"{backendBaseUrl}/logs/usb";
                 case "Clipboard":
-                    return "http://localhost:5001/logs/clipboard";
+                    return $"{backendBaseUrl}/logs/clipboard";
                 case "ProcessStart":
                 case "ProcessEnd":
-                    return "http://localhost:5001/logs/processes";
+                    return $"{backendBaseUrl}/logs/processes";
                 case "Download":
-                    return "http://localhost:5001/logs/downloads";
+                    return $"{backendBaseUrl}/logs/downloads";
                 default:
-                    return "http://localhost:5001/logs/general";
+                    return $"{backendBaseUrl}/logs/general";
             }
         }
 

@@ -10,9 +10,9 @@ namespace MonitoringService
     public class DownloadsMonitor
     {
         // Use absolute paths
-        private readonly string _downloadsFolder = @"C:\Users\Dina\Downloads";
-        private readonly string _picturesFolder = @"C:\Users\Dina\Pictures";
-        private readonly string _documentsFolder = @"C:\Users\Dina\Documents";
+        private readonly string _downloadsFolder = UserFoldersHelper.GetDownloadsFolder();
+        private readonly string _picturesFolder = UserFoldersHelper.GetPicturesFolder();
+        private readonly string _documentsFolder = UserFoldersHelper.GetDocumentsFolder();
 
         private readonly HashSet<string> _trackedExtensions = new HashSet<string>
         {
@@ -31,6 +31,7 @@ namespace MonitoringService
 
         public void StartMonitoring()
         {
+            LogToEventViewer($"Monitoring will use Downloads: '{_downloadsFolder}', Pictures: '{_picturesFolder}', Documents: '{_documentsFolder}'");
             LogToEventViewer("Download, Pictures, and Documents folder monitoring is starting...");
             if (_isMonitoring)
             {

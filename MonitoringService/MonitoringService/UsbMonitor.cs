@@ -61,7 +61,8 @@ namespace MonitoringService
         {
             try
             {
-                using (SoundPlayer player = new SoundPlayer(@"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\warning-sound.wav"))
+                string soundPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "warning-sound.wav");
+                using (SoundPlayer player = new SoundPlayer(soundPath))
                 {
                     player.Play();
                     Thread.Sleep(5000);

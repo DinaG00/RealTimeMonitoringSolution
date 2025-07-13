@@ -16,7 +16,7 @@ namespace ClipboardMonitorConsoleApp
         private static extern bool AddClipboardFormatListener(IntPtr hwnd);
 
         private const int WM_CLIPBOARDUPDATE = 0x031D;
-        private static readonly string DirectoryPath = @"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\ClipboardLogs";
+        //private static readonly string DirectoryPath = @"C:\Users\Dina\Documents\CSIE\licenta\application\RealTimeMonitoryingSolution\MonitoringService\ClipboardLogs";
 
         public ClipboardMonitorForm()
         {

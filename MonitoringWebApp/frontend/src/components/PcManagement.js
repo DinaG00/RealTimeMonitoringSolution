@@ -103,6 +103,7 @@ const PCManagement = () => {
     const [pcLogs, setPcLogs] = useState({ process: [], usb: [], clipboard: [], download: [] });
     const [logsTab, setLogsTab] = useState(0);
     const [loadingPcLogs, setLoadingPcLogs] = useState(false);
+    const [offlineConfig, setOfflineConfig] = useState(null);
     const [startTime, setStartTime] = useState('');
     const [endTime, setEndTime] = useState('');
     const [examMode, setExamMode] = useState(false);
@@ -113,12 +114,13 @@ const PCManagement = () => {
     const wsRef = useRef(null);
     const [highlightedPCs, setHighlightedPCs] = useState([]);
     const [notificationTab, setNotificationTab] = useState(0);
+    const [editPcDialog, setEditPcDialog] = useState({ open: false, pc: null, newName: '' });
 
     useEffect(() => {
         const initializeData = async () => {
             setLoading(true);
             try {
-                await Promise.all([fetchClassrooms(), fetchPCs()]);
+                await Promise.all([fetchClassrooms(), fetchPCs(), fetchOfflineConfig()]);
             } catch (error) {
                 console.error('Error initializing data:', error);
                 showSnackbar('Error loading data', 'error');
@@ -162,6 +164,18 @@ const PCManagement = () => {
         } catch (error) {
             console.error('Error fetching PCs:', error);
             showSnackbar('Error fetching PCs', 'error');
+        }
+    };
+
+    const fetchOfflineConfig = async () => {
+        try {
+            const response = await fetch('http://localhost:5001/config/offline-detection');
+            if (response.ok) {
+                const data = await response.json();
+                setOfflineConfig(data);
+            }
+        } catch (error) {
+            console.error('Error fetching offline config:', error);
         }
     };
 
@@ -348,6 +362,62 @@ const PCManagement = () => {
         }
     };
 
+    const handleEditPcDialog = (pc) => {
+        setEditPcDialog({ open: true, pc, newName: pc.pc_name });
+    };
+
+    const handleEditPcClose = () => {
+        setEditPcDialog({ open: false, pc: null, newName: '' });
+    };
+
+    const handleEditPcSubmit = async () => {
+        if (!editPcDialog.pc || !editPcDialog.newName.trim()) {
+            showSnackbar('Enter a PC name', 'error');
+            return;
+        }
+
+        // Check if the new name is the same as the current name
+        if (editPcDialog.newName.trim() === editPcDialog.pc.pc_name) {
+            handleEditPcClose();
+            return;
+        }
+
+        try {
+            const response = await fetch(`http://localhost:5001/pcs/${editPcDialog.pc.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    pc_name: editPcDialog.newName.trim(),
+                    classroom_id: editPcDialog.pc.classroom_id
+                })
+            });
+
+            if (response.ok) {
+                await fetchPCs();
+                if (selectedClassroom) {
+                    // Refresh classroom PCs if a classroom is selected
+                    const classroomResponse = await fetch(`http://localhost:5001/classrooms/${selectedClassroom.id}/pcs`);
+                    if (classroomResponse.ok) {
+                        const data = await classroomResponse.json();
+                        setClassroomPCs(data);
+                    }
+                }
+                showSnackbar('PC renamed successfully', 'success');
+                handleEditPcClose();
+            } else {
+                const errorData = await response.json();
+                if (response.status === 400 && errorData.error && errorData.error.includes('UNIQUE constraint failed')) {
+                    showSnackbar('A PC with this name already exists', 'error');
+                } else {
+                    throw new Error(errorData.error || 'Failed to rename PC');
+                }
+            }
+        } catch (error) {
+            console.error('Error renaming PC:', error);
+            showSnackbar(error.message || 'Failed to rename PC', 'error');
+        }
+    };
+
     const handleDialogClose = () => {
         setDialog({ open: false, type: '', mode: '', data: null });
     };
@@ -397,19 +467,45 @@ const PCManagement = () => {
         return pcs.filter(pc => !pc.classroom_id);
     };
 
-    const renderPCStatus = (pc) => (
-        <Box sx={{ 
-            display: 'inline-block',
-            px: 1,
-            py: 0.5,
-            borderRadius: 1,
-            bgcolor: pc.is_connected ? 'success.light' : 'error.light',
-            color: 'white',
-            fontWeight: 'bold'
-        }}>
-            {pc.is_connected ? 'Online' : 'Offline'}
-        </Box>
-    );
+    const renderPCStatus = (pc) => {
+        const getTimeSinceLastConnection = (lastConnection) => {
+            if (!lastConnection) return 'Never connected';
+            
+            const lastSeen = new Date(lastConnection);
+            const now = new Date();
+            const diffMs = now - lastSeen;
+            const diffMinutes = Math.floor(diffMs / (1000 * 60));
+            const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+            const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            
+            if (diffDays > 0) return `${diffDays}d ago`;
+            if (diffHours > 0) return `${diffHours}h ago`;
+            if (diffMinutes > 0) return `${diffMinutes}m ago`;
+            return 'Just now';
+        };
+
+        return (
+            <Box>
+                <Box sx={{ 
+                    display: 'inline-block',
+                    px: 1,
+                    py: 0.5,
+                    borderRadius: 1,
+                    bgcolor: pc.is_connected ? 'success.light' : 'error.light',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    mb: 0.5
+                }}>
+                    {pc.is_connected ? 'Online' : 'Offline'}
+                </Box>
+                {!pc.is_connected && pc.last_connection && (
+                    <Typography variant="caption" color="text.secondary" display="block">
+                        Last seen: {getTimeSinceLastConnection(pc.last_connection)}
+                    </Typography>
+                )}
+            </Box>
+        );
+    };
 
     const renderClassroomSelect = (pc) => (
         <FormControl fullWidth size="small">
@@ -485,6 +581,7 @@ const PCManagement = () => {
                         <TableCell>Status</TableCell>
                         <TableCell>Classroom</TableCell>
                         <TableCell>Last Connection</TableCell>
+                        <TableCell>Actions</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
@@ -493,23 +590,50 @@ const PCManagement = () => {
                             key={pc.id}
                             hover
                             style={{
-                                cursor: 'pointer',
                                 backgroundColor: highlightedPCs.includes(pc.id) ? '#fff9c4' : undefined // yellow highlight
                             }}
-                            onClick={() => handlePcRowClick(pc)}
                         >
-                            <TableCell>{pc.pc_name}</TableCell>
-                            <TableCell>
+                            <TableCell 
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => handlePcRowClick(pc)}
+                            >
+                                {pc.pc_name}
+                            </TableCell>
+                            <TableCell 
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => handlePcRowClick(pc)}
+                            >
                                 {notifications.some(n => n.pcId === pc.id) && (
                                     <WarningIcon color="error" sx={{ mr: 1 }} />
                                 )}
                                 {renderPCStatus(pc)}
                             </TableCell>
-                            <TableCell>{renderClassroomSelect(pc)}</TableCell>
-                            <TableCell>
+                            <TableCell 
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => handlePcRowClick(pc)}
+                            >
+                                {renderClassroomSelect(pc)}
+                            </TableCell>
+                            <TableCell 
+                                style={{ cursor: 'pointer' }}
+                                onClick={() => handlePcRowClick(pc)}
+                            >
                                 {pc.last_connection 
                                     ? toRomanianLocaleString(pc.last_connection)
                                     : 'Never'}
+                            </TableCell>
+                            <TableCell>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<EditIcon />}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleEditPcDialog(pc);
+                                    }}
+                                >
+                                    Edit
+                                </Button>
                             </TableCell>
                         </TableRow>
                     ))}
@@ -525,18 +649,64 @@ const PCManagement = () => {
         // eslint-disable-next-line
     }, [startTime, endTime, examMode, examPeriod]);
 
+    // Periodic refresh of PC status (every 30 seconds)
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchPCs();
+            if (selectedClassroom) {
+                fetchClassroomStats(selectedClassroom.id);
+            }
+        }, 30000); // 30 seconds
+
+        return () => clearInterval(interval);
+    }, [selectedClassroom]);
+
     const closeNotification = (notif) => {
         setShowNotification(false);
         setHighlightedPCs(prev => prev.filter(id => id !== notif.pcId));
     };
 
+    const deleteNotification = (notif) => {
+        setNotifications(prev => prev.filter(n => n.logId !== notif.logId));
+        setHighlightedPCs(prev => prev.filter(id => id !== notif.pcId));
+    };
+
+    const fetchHistoricalNotifications = async (classroomId, startTime, endTime) => {
+        try {
+            const response = await fetch(`http://localhost:5001/classrooms/${classroomId}/notifications?start_time=${encodeURIComponent(startTime)}&end_time=${encodeURIComponent(endTime)}`);
+            if (response.ok) {
+                const data = await response.json();
+                setNotifications(data);
+                // Highlight PCs that have notifications
+                const pcIdsWithNotifications = [...new Set(data.map(n => n.pcId))];
+                setHighlightedPCs(pcIdsWithNotifications);
+            }
+        } catch (error) {
+            console.error('Error fetching historical notifications:', error);
+        }
+    };
+
     useEffect(() => {
-        if (!examMode || !selectedClassroom) return;
-        // Connect to WebSocket server
+        // Connect to WebSocket server (always connect, not just in exam mode)
         const ws = new window.WebSocket('ws://localhost:5001');
         wsRef.current = ws;
         ws.onmessage = (event) => {
             const notif = JSON.parse(event.data);
+            
+            // Handle PC status changes (online/offline)
+            if (notif.type === 'pc_status_change') {
+                // Refresh PC list to show updated status
+                fetchPCs();
+                // Also refresh classroom stats if a classroom is selected
+                if (selectedClassroom) {
+                    fetchClassroomStats(selectedClassroom.id);
+                }
+                return;
+            }
+            
+            // Handle exam mode notifications
+            if (!examMode || !selectedClassroom) return;
+            
             const supportedTypes = ['process_log', 'usb_log', 'clipboard_log', 'download_log'];
             if (
                 supportedTypes.includes(notif.type) &&
@@ -560,7 +730,23 @@ const PCManagement = () => {
 
     const renderNotificationHistory = () => (
         <Box sx={{ mt: 2 }}>
-            <Typography variant="h6" gutterBottom>Notification History</Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography variant="h6">Notification History</Typography>
+                {notifications.length > 0 && (
+                    <Button
+                        size="small"
+                        variant="outlined"
+                        color="error"
+                        startIcon={<DeleteIcon />}
+                        onClick={() => {
+                            setNotifications([]);
+                            setHighlightedPCs([]);
+                        }}
+                    >
+                        Clear All
+                    </Button>
+                )}
+            </Box>
             {notifications.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">No notifications yet.</Typography>
             ) : (
@@ -582,7 +768,12 @@ const PCManagement = () => {
                                 }
                             />
                             <ListItemSecondaryAction>
-                                <Button size="small" color="primary" onClick={() => closeNotification(notif)}>Dismiss</Button>
+                                <Button size="small" color="error" onClick={() => deleteNotification(notif)} sx={{ mr: 1 }}>
+                                    Delete
+                                </Button>
+                                <Button size="small" color="primary" onClick={() => closeNotification(notif)}>
+                                    Dismiss
+                                </Button>
                             </ListItemSecondaryAction>
                         </ListItem>
                     ))}
@@ -650,10 +841,17 @@ const PCManagement = () => {
                     <Button
                         variant="contained"
                         color="success"
-                        onClick={() => {
+                        onClick={async () => {
                             if (startTime && endTime) {
-                                setExamPeriod({ start: toUTCISOString(startTime), end: toUTCISOString(endTime) });
+                                const startUTC = toUTCISOString(startTime);
+                                const endUTC = toUTCISOString(endTime);
+                                setExamPeriod({ start: startUTC, end: endUTC });
                                 setExamMode(true);
+                                
+                                // Fetch historical notifications for the exam period
+                                if (selectedClassroom) {
+                                    await fetchHistoricalNotifications(selectedClassroom.id, startUTC, endUTC);
+                                }
                             }
                         }}
                         disabled={examMode || !startTime || !endTime}
@@ -668,6 +866,7 @@ const PCManagement = () => {
                             setExamMode(false);
                             setExamPeriod({ start: '', end: '' });
                             setNotifications([]);
+                            setHighlightedPCs([]);
                         }}
                         sx={{ ml: 2 }}
                     >
@@ -777,7 +976,7 @@ const PCManagement = () => {
             <Divider sx={{ my: 2 }} />
             <Tabs value={notificationTab} onChange={(_, v) => setNotificationTab(v)} sx={{ mb: 2 }}>
                 <Tab label="PCs" />
-                <Tab label="Notification History" />
+                <Tab label={`Notification History ${notifications.length > 0 ? `(${notifications.length})` : ''}`} />
             </Tabs>
             {notificationTab === 0 ? (
                 <>
@@ -823,6 +1022,24 @@ const PCManagement = () => {
                 <DialogActions>
                     <Button onClick={handleEditClassroomClose}>Cancel</Button>
                     <Button onClick={handleEditClassroomSubmit} variant="contained">Save</Button>
+                </DialogActions>
+            </Dialog>
+            {/* Edit PC Dialog */}
+            <Dialog open={editPcDialog.open} onClose={handleEditPcClose}>
+                <DialogTitle>Edit PC Name</DialogTitle>
+                <DialogContent>
+                    <TextField
+                        autoFocus
+                        margin="dense"
+                        label="PC Name"
+                        fullWidth
+                        value={editPcDialog.newName}
+                        onChange={(e) => setEditPcDialog(prev => ({ ...prev, newName: e.target.value }))}
+                    />
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleEditPcClose}>Cancel</Button>
+                    <Button onClick={handleEditPcSubmit} variant="contained">Save</Button>
                 </DialogActions>
             </Dialog>
             {/* PC Logs Dialog */}

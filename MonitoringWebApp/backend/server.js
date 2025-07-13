@@ -679,32 +679,69 @@ app.post('/pcs/heartbeat', (req, res) => {
     }
 
     const now = new Date().toISOString();
-    db.run(
-        'UPDATE pcs SET is_connected = 1, last_connection = ? WHERE pc_name = ?',
-        [now, pc_name],
-        function(err) {
-            if (err) {
-                console.error('Error updating PC status:', err);
-                return res.status(500).json({ error: 'Failed to update PC status' });
-            }
-            if (this.changes === 0) {
-                // If PC doesn't exist, create it
-                db.run(
-                    'INSERT INTO pcs (pc_name, is_connected, last_connection) VALUES (?, 1, ?)',
-                    [pc_name, now],
-                    function(err) {
-                        if (err) {
-                            console.error('Error creating PC:', err);
-                            return res.status(500).json({ error: 'Failed to create PC' });
-                        }
-                        res.json({ message: 'PC created and status updated' });
-                    }
-                );
-            } else {
-                res.json({ message: 'PC status updated' });
-            }
+    
+    // First check if PC exists and get its current status
+    db.get('SELECT id, is_connected FROM pcs WHERE pc_name = ?', [pc_name], (err, row) => {
+        if (err) {
+            console.error('Error checking PC status:', err);
+            return res.status(500).json({ error: 'Failed to check PC status' });
         }
-    );
+        
+        if (row) {
+            // PC exists, update its status
+            const wasOffline = !row.is_connected;
+            db.run(
+                'UPDATE pcs SET is_connected = 1, last_connection = ? WHERE pc_name = ?',
+                [now, pc_name],
+                function(err) {
+                    if (err) {
+                        console.error('Error updating PC status:', err);
+                        return res.status(500).json({ error: 'Failed to update PC status' });
+                    }
+                    
+                    // Broadcast status change if PC was offline and is now online
+                    if (wasOffline) {
+                        broadcastNotification({
+                            type: 'pc_status_change',
+                            pcId: row.id,
+                            pcName: pc_name,
+                            status: 'online',
+                            timestamp: now
+                        });
+                    }
+                    
+                    res.json({ message: 'PC status updated' });
+                }
+            );
+        } else {
+            // PC doesn't exist, create it
+            db.run(
+                'INSERT INTO pcs (pc_name, is_connected, last_connection) VALUES (?, 1, ?)',
+                [pc_name, now],
+                function(err) {
+                    if (err) {
+                        console.error('Error creating PC:', err);
+                        return res.status(500).json({ error: 'Failed to create PC' });
+                    }
+                    
+                    // Get the newly created PC's ID for broadcasting
+                    db.get('SELECT id FROM pcs WHERE pc_name = ?', [pc_name], (err, newRow) => {
+                        if (!err && newRow) {
+                            broadcastNotification({
+                                type: 'pc_status_change',
+                                pcId: newRow.id,
+                                pcName: pc_name,
+                                status: 'online',
+                                timestamp: now
+                            });
+                        }
+                    });
+                    
+                    res.json({ message: 'PC created and status updated' });
+                }
+            );
+        }
+    });
 });
 
 // API to get all applications (for dropdown)
@@ -1046,6 +1083,174 @@ app.get('/logs/downloads', (req, res) => {
     });
 });
 
+// Endpoint to get offline detection configuration
+app.get('/config/offline-detection', (req, res) => {
+    res.json({
+        timeoutMinutes: OFFLINE_TIMEOUT_MINUTES,
+        checkIntervalMs: OFFLINE_CHECK_INTERVAL_MS
+    });
+});
+
+// Endpoint to get historical notifications for a classroom within a time period
+app.get('/classrooms/:id/notifications', (req, res) => {
+    const classroomId = req.params.id;
+    const { start_time, end_time } = req.query;
+    
+    if (!start_time || !end_time) {
+        return res.status(400).json({ error: 'Start time and end time are required' });
+    }
+
+    try {
+        // Get all PCs in the classroom
+        db.all('SELECT id FROM pcs WHERE classroom_id = ?', [classroomId], (err, pcs) => {
+            if (err) {
+                console.error('Error fetching classroom PCs:', err);
+                return res.status(500).json({ error: 'Failed to fetch classroom PCs' });
+            }
+
+            const pcIds = pcs.map(pc => pc.id);
+            if (pcIds.length === 0) {
+                return res.json([]);
+            }
+
+            // Fetch notifications from all log types for the given time period
+            const notifications = [];
+            
+            // Process logs
+            db.all(`
+                SELECT 
+                    pl.id as logId,
+                    pl.timestamp,
+                    pl.action,
+                    p.pc_name,
+                    p.id as pcId,
+                    a.display_name as appName,
+                    'process_log' as type
+                FROM processes_logs pl
+                JOIN pcs p ON pl.pc_id = p.id
+                JOIN applications a ON pl.application_id = a.id
+                WHERE pl.pc_id IN (${pcIds.map(() => '?').join(',')})
+                AND pl.timestamp BETWEEN ? AND ?
+                ORDER BY pl.timestamp DESC
+            `, [...pcIds, start_time, end_time], (err, rows) => {
+                if (!err) {
+                    notifications.push(...rows);
+                }
+                
+                // USB logs
+                db.all(`
+                    SELECT 
+                        ul.id as logId,
+                        ul.timestamp,
+                        ul.action,
+                        ul.device_name as deviceName,
+                        p.pc_name,
+                        p.id as pcId,
+                        'usb_log' as type
+                    FROM usb_logs ul
+                    JOIN pcs p ON ul.pc_id = p.id
+                    WHERE ul.pc_id IN (${pcIds.map(() => '?').join(',')})
+                    AND ul.timestamp BETWEEN ? AND ?
+                    ORDER BY ul.timestamp DESC
+                `, [...pcIds, start_time, end_time], (err, rows) => {
+                    if (!err) {
+                        notifications.push(...rows);
+                    }
+                    
+                    // Clipboard logs
+                    db.all(`
+                        SELECT 
+                            cl.id as logId,
+                            cl.timestamp,
+                            cl.content,
+                            p.pc_name,
+                            p.id as pcId,
+                            'clipboard_log' as type
+                        FROM clipboard_logs cl
+                        JOIN pcs p ON cl.pc_id = p.id
+                        WHERE cl.pc_id IN (${pcIds.map(() => '?').join(',')})
+                        AND cl.timestamp BETWEEN ? AND ?
+                        ORDER BY cl.timestamp DESC
+                    `, [...pcIds, start_time, end_time], (err, rows) => {
+                        if (!err) {
+                            notifications.push(...rows);
+                        }
+                        
+                        // Download logs
+                        db.all(`
+                            SELECT 
+                                dl.id as logId,
+                                dl.timestamp,
+                                dl.file_name as fileName,
+                                dl.file_type as fileType,
+                                dl.content,
+                                p.pc_name,
+                                p.id as pcId,
+                                'download_log' as type
+                            FROM downloads_logs dl
+                            JOIN pcs p ON dl.pc_id = p.id
+                            WHERE dl.pc_id IN (${pcIds.map(() => '?').join(',')})
+                            AND dl.timestamp BETWEEN ? AND ?
+                            ORDER BY dl.timestamp DESC
+                        `, [...pcIds, start_time, end_time], (err, rows) => {
+                            if (!err) {
+                                notifications.push(...rows);
+                            }
+                            
+                            // Sort all notifications by timestamp (newest first)
+                            notifications.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                            
+                            res.json(notifications);
+                        });
+                    });
+                });
+            });
+        });
+    } catch (error) {
+        console.error('Error fetching notifications:', error);
+        res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+});
+
+// Offline detection configuration
+const OFFLINE_TIMEOUT_MINUTES = process.env.OFFLINE_TIMEOUT_MINUTES ? parseInt(process.env.OFFLINE_TIMEOUT_MINUTES) : 2; // Mark PC as offline after X minutes without heartbeat
+const OFFLINE_CHECK_INTERVAL_MS = process.env.OFFLINE_CHECK_INTERVAL_MS ? parseInt(process.env.OFFLINE_CHECK_INTERVAL_MS) : 30000; // Check every X milliseconds
+
+// Function to check for offline PCs
+function checkOfflinePCs() {
+    const timeoutThreshold = new Date(Date.now() - (OFFLINE_TIMEOUT_MINUTES * 60 * 1000)).toISOString();
+    
+    db.run(
+        'UPDATE pcs SET is_connected = 0 WHERE is_connected = 1 AND last_connection < ?',
+        [timeoutThreshold],
+        function(err) {
+            if (err) {
+                console.error('Error checking for offline PCs:', err);
+            } else if (this.changes > 0) {
+                console.log(`Marked ${this.changes} PC(s) as offline due to stale heartbeat`);
+                
+                // Broadcast offline status to connected clients
+                db.all('SELECT id, pc_name FROM pcs WHERE is_connected = 0 AND last_connection < ?', [timeoutThreshold], (err, rows) => {
+                    if (!err && rows.length > 0) {
+                        rows.forEach(pc => {
+                            broadcastNotification({
+                                type: 'pc_status_change',
+                                pcId: pc.id,
+                                pcName: pc.pc_name,
+                                status: 'offline',
+                                timestamp: new Date().toISOString()
+                            });
+                        });
+                    }
+                });
+            }
+        }
+    );
+}
+
+// Start periodic offline detection
+setInterval(checkOfflinePCs, OFFLINE_CHECK_INTERVAL_MS);
+
 // Start server (use http server for ws)
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -1060,4 +1265,5 @@ function broadcastNotification(notification) {
 
 server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
+    console.log(`Offline detection enabled: PCs marked offline after ${OFFLINE_TIMEOUT_MINUTES} minutes without heartbeat`);
 });

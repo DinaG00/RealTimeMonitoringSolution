@@ -88,7 +88,7 @@ namespace MonitoringService
             {
                 _usbWatcher?.Stop();
                 _usbWatcher?.Dispose();
-                _usbWatcherThread?.Abort(); // Not the most graceful way, but it stops the thread
+                _usbWatcherThread?.Abort(); 
                 _isRunning = false;
                 _eventLog.WriteEntry("USB detection stopped.");
             }

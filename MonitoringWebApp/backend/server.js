@@ -20,7 +20,7 @@ app.use(cors({
 }));
 app.use(bodyParser.json());
 
-// Database connection with better error handling
+// Database connection
 let db;
 try {
     db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE | sqlite3.OPEN_CREATE, (err) => {
@@ -30,10 +30,8 @@ try {
         }
         console.log('Connected to SQLite database at:', dbPath);
         
-        // Enable foreign keys
         db.run('PRAGMA foreign_keys = ON');
         
-        // Initialize database if needed
         initializeDatabase();
     });
 } catch (err) {
@@ -130,13 +128,11 @@ function insertTestData() {
     const testDataPath = path.join(__dirname, '..', 'database', 'test_data.sql');
     const testData = require('fs').readFileSync(testDataPath, 'utf8');
     
-    // Split the SQL file into individual statements
     const statements = testData
         .split(';')
         .map(stmt => stmt.trim())
         .filter(stmt => stmt.length > 0);
     
-    // Execute statements in sequence
     let currentIndex = 0;
     
     function executeNextStatement() {
@@ -412,30 +408,6 @@ app.post('/logs/processes', async (req, res) => {
 });
 
 // API to fetch process logs
-app.get('/logs/processes', (req, res) => {
-    const query = `
-        SELECT 
-            pl.*,
-            p.pc_name,
-            p.id as pc_id,
-            a.name as application_name,
-            a.display_name as application_display_name,
-            datetime(pl.timestamp, 'localtime') as local_timestamp
-        FROM processes_logs pl
-        JOIN pcs p ON pl.pc_id = p.id
-        JOIN applications a ON pl.application_id = a.id
-        ORDER BY pl.timestamp DESC
-    `;
-    db.all(query, [], (err, rows) => {
-        if (err) {
-            console.error('Error fetching process logs:', err);
-            return res.status(500).json({ error: 'Failed to fetch process logs' });
-        }
-        res.json(rows);
-    });
-});
-
-// Alias for process logs endpoint
 app.get('/logs/process', (req, res) => {
     const query = `
         SELECT 
@@ -779,7 +751,7 @@ app.get('/application-lists', (req, res) => {
     });
 });
 
-// API to add an application to a list (now using application_id)
+// API to add an application to a list
 app.post('/application-lists', (req, res) => {
     const { application_id, list_type } = req.body;
     if (!application_id || !list_type) {

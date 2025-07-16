@@ -31,7 +31,7 @@ namespace MonitoringService
             {
                 try
                 {
-                    string consoleAppPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ClipboardConsoleApp", "ClipboardConsoleApp", "bin", "Debug", "ClipboardConsoleApp.exe");
+                    string consoleAppPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ClipboardConsoleApp.exe");
                     _eventLog.WriteEntry($"Attempting to start clipboard monitoring from path: {consoleAppPath}");
 
                     if (!File.Exists(consoleAppPath))

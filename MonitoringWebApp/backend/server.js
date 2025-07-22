@@ -123,7 +123,7 @@ function initializeDatabase() {
     });
 }
 
-// Insert test data function
+// Insert test data function for debugging
 function insertTestData() {
     const testDataPath = path.join(__dirname, '..', 'database', 'test_data.sql');
     const testData = require('fs').readFileSync(testDataPath, 'utf8');
@@ -185,7 +185,7 @@ const getOrCreateApplication = async (db, processName) => {
     });
 };
 
-// Helper function to get or create PC
+// Helper function to get/create PC
 async function getOrCreatePC(pcName) {
     return new Promise((resolve, reject) => {
         db.get('SELECT id FROM pcs WHERE pc_name = ?', [pcName], (err, row) => {
@@ -208,7 +208,7 @@ async function getOrCreatePC(pcName) {
     });
 }
 
-// API to insert USB logs (accepts either {pc, device_name, action} or {pc, data})
+// API to insert USB logs : {pc, device_name, action} or {pc, data}
 app.post('/logs/usb', async (req, res) => {
     let { pc, device_name, action, data } = req.body;
 
@@ -364,7 +364,7 @@ app.post('/logs/processes', async (req, res) => {
         const pcId = await getOrCreatePC(pc);
         const applicationId = await getOrCreateApplication(db, process_name);
 
-        // Convert ISO string dates to SQLite format if needed
+        // Convert ISO string dates to SQLite format 
         const startTime = start_time ? new Date(start_time).toISOString() : null;
         const endTime = end_time ? new Date(end_time).toISOString() : null;
         const logTimestamp = new Date().toISOString();

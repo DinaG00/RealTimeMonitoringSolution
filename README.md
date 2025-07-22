@@ -11,17 +11,19 @@ It includes:
 
 ##  Project Structure
 
-clipboardMonitor/           # Python service for clipboard monitoring
-RealTimeMonitoringSolution/
-├── MonitoringService/      # C# Windows Service for monitoring clipboard, USB, downloads, and processes
-├── ClipboardConsoleApp/    # C# console app for clipboard monitoring
-├── ClipboardLogs/          # Stores clipboard log files
-MonitoringWebApp/
-├── backend/                # Node.js/Express API
-├── frontend/               # React app for the UI
-├── database/               # SQLite database and initialization scripts
+clipboardMonitor: "Python service for clipboard monitoring, does not bypass Windows Permissions"
 
-## 📄 Copyright
+RealTimeMonitoringSolution:
+  MonitoringService: "C# Windows Service for monitoring clipboard, USB, downloads, and processes"
+  ClipboardConsoleApp: "C# console app for clipboard monitoring, does not bypass Windows Permissions"
+
+MonitoringWebApp:
+  backend: "Node.js/Express API"
+  frontend: "React app for the UI with MUI theme"
+  database: "SQLite database and initialization scripts"
+
+
+##  Copyright
 
 &copy; 2025 Gavrilescu Dina.  
 All rights reserved.  

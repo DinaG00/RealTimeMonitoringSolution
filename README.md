@@ -11,16 +11,16 @@ It includes:
 
 ##  Project Structure
 
-clipboardMonitor: "Python service for clipboard monitoring, does not bypass Windows Permissions"
+- ClipboardMonitor: Python service for clipboard monitoring, does not bypass Windows Permissions
 
-RealTimeMonitoringSolution:
-  MonitoringService: "C# Windows Service for monitoring clipboard, USB, downloads, and processes"
-  ClipboardConsoleApp: "C# console app for clipboard monitoring, does not bypass Windows Permissions"
+- RealTimeMonitoringSolution:
+  MonitoringService: C# Windows Service for monitoring clipboard, USB, downloads, and processes
+  ClipboardConsoleApp: C# console app for clipboard monitoring, does not bypass Windows Permissions
 
-MonitoringWebApp:
-  backend: "Node.js/Express API"
-  frontend: "React app for the UI with MUI theme"
-  database: "SQLite database and initialization scripts"
+- MonitoringWebApp:
+  backend: Node.js/Express API
+  frontend: React app for the UI with MUI theme
+  database: SQLite database and initialization scripts
 
 
 ##  Copyright
